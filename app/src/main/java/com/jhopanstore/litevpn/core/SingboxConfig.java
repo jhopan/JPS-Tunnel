@@ -16,7 +16,7 @@ public final class SingboxConfig {
             .put(new JSONObject().put("tag", "dns-local").put("address", "local")))
             .put("rules", new JSONArray().put(new JSONObject().put("outbound", "direct").put("server", "dns-local"))));
         root.put("inbounds", new JSONArray()
-            .put(new JSONObject().put("type", "tun").put("tag", "tun-in").put("inet4_address", "172.19.0.1/30").put("mtu", 1280).put("auto_route", true).put("strict_route", true).put("sniff", true).put("sniff_override_destination", false))
+            .put(new JSONObject().put("type", "tun").put("tag", "tun-in").put("inet4_address", "172.19.0.1/30").put("mtu", 1280).put("auto_route", true).put("strict_route", true).put("sniff", true).put("sniff_override_destination", false).put("stack", "gvisor"))
             .put(new JSONObject().put("type", "mixed").put("tag", "mixed-in").put("listen", "127.0.0.1").put("listen_port", PROXY_PORT)));
         JSONObject tls = new JSONObject().put("enabled", true)
             .put("server_name", config.sni)
