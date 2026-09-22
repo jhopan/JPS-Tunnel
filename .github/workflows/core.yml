@@ -1,0 +1,78 @@
+name: core
+
+on:
+  workflow_dispatch:
+    inputs:
+      singbox_version:
+        description: 'sing-box version (e.g. 1.11.15)'
+        required: false
+        default: '1.11.15'
+      core_tag:
+        description: 'core release tag (e.g. core-v1.0.0)'
+        required: true
+
+env:
+  GO_VERSION: '1.23'
+
+jobs:
+  build-android:
+    name: core-android
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout app (for CI context)
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r25b
+
+      - name: Clone sing-box
+        run: git clone --depth 1 --branch v${{ inputs.singbox_version }} https://github.com/SagerNet/sing-box.git sing-box
+
+      - name: Build libbox AAR
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          cd sing-box
+          go get golang.org/x/mobile/bind@latest
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          gomobile init
+          gomobile bind -v -o ../JPS-Core-android.aar             -target=android/arm64             -androidapi=24             -javapkg=io.github.sagernet.libbox             -tags="with_gvisor,with_clash_api"             -ldflags="-s -w -X github.com/sagernet/sing-box/constant.Version=v${{ inputs.singbox_version }} -extldflags=-Wl,-z,max-page-size=16384"             ./experimental/libbox
+
+      - name: Generate checksums
+        run: |
+          sha256sum JPS-Core-android.aar > JPS-Core-android.aar.sha256
+          cat JPS-Core-android.aar.sha256
+
+      - name: Release core
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.core_tag }}
+          name: "Core ${{ inputs.core_tag }} (sing-box ${{ inputs.singbox_version }})"
+          body: |
+            libbox core untuk JPS Tunnel.
+
+            - sing-box: v${{ inputs.singbox_version }}
+            - target: android arm64
+            - tags: with_gvisor, with_clash_api
+
+            Verify: sha256sum -c JPS-Core-android.aar.sha256
+          files: |
+            JPS-Core-android.aar
+            JPS-Core-android.aar.sha256
