@@ -8,7 +8,7 @@ A lightweight Android VPN client for VLESS over WebSocket + TLS.
 
 **Light. Stable. 24/7.**
 
-[![Release](https://img.shields.io/github/v/release/jhopan/JhopanStoreVPN-Singbox?label=release&color=4CAF50)](https://github.com/jhopan/JhopanStoreVPN-Singbox/releases/latest)
+[![Release](https://img.shields.io/github/v/release/jhopan/JPS-Tunnel?label=release&color=4CAF50)](https://github.com/jhopan/JPS-Tunnel/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Android%2024%2B-121212)](#build)
 [![Architecture](https://img.shields.io/badge/arch-arm64--v8a-1976D2)](#build)
 
@@ -63,7 +63,7 @@ JPS Tunnel is a Java-only Android VPN client built on `VpnService` and a local `
 Grab the latest APK from GitHub Releases:
 
 ```bash
-https://github.com/jhopan/JhopanStoreVPN-Singbox/releases/latest/download/JhopanStoreVPN.apk
+https://github.com/jhopan/JPS-Tunnel/releases/latest/download/JhopanStoreVPN.apk
 ```
 
 Versioned releases (`v1.0.0` and newer) are permanent; the `latest` tag tracks the current build of `main`.
