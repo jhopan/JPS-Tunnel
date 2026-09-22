@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="design/logo.svg" alt="JhopanStore VPN" width="128"/>
+<img src="design/logo.svg" alt="JPS Tunnel" width="128"/>
 
-# JhopanStore VPN
+# JPS Tunnel
 
 A lightweight Android VPN client for VLESS over WebSocket + TLS.
 
@@ -18,7 +18,7 @@ Made with :green_heart: by **[JhopanStore](https://jhopanstore.my.id)** • [Tel
 
 ## Overview
 
-JhopanStore VPN is a Java-only Android VPN client built on `VpnService` and a local `libbox` (sing-box v1.11.0) runtime. It speaks exactly one protocol — VLESS + WebSocket + TLS with normal SNI — and focuses on three things: staying light, staying honest about connection state, and staying alive around the clock.
+JPS Tunnel is a Java-only Android VPN client built on `VpnService` and a local `libbox` (sing-box v1.11.0) runtime. It speaks exactly one protocol — VLESS + WebSocket + TLS with normal SNI — and focuses on three things: staying light, staying honest about connection state, and staying alive around the clock.
 
 ## Features
 

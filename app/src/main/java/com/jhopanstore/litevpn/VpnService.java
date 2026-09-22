@@ -195,7 +195,7 @@ public final class VpnService extends android.net.VpnService {
 
     private final class Platform implements PlatformInterface {
         @Override public int openTun(TunOptions options) {
-            Builder builder = new Builder().setSession("JhopanStore VPN").setMtu(options.getMTU());
+            Builder builder = new Builder().setSession("JPS Tunnel").setMtu(options.getMTU());
             builder.addAddress("172.19.0.1", 30).addRoute("0.0.0.0", 0).addDnsServer("1.1.1.1").addDnsServer("8.8.8.8");
             try { builder.addDisallowedApplication(getPackageName()); } catch (Exception ignored) {}
             try {
@@ -494,7 +494,7 @@ public final class VpnService extends android.net.VpnService {
         PendingIntent content = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         PendingIntent stop = PendingIntent.getService(this, 1, new Intent(this, VpnService.class).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? new Notification.Builder(this, CHANNEL) : new Notification.Builder(this);
-        return builder.setContentTitle("JhopanStore VPN").setContentText(text).setSmallIcon(R.drawable.ic_vpn_key).setContentIntent(content).addAction(new Notification.Action.Builder(null, "Disconnect", stop).build()).setOngoing(true).build();
+        return builder.setContentTitle("JPS Tunnel").setContentText(text).setSmallIcon(R.drawable.ic_vpn_key).setContentIntent(content).addAction(new Notification.Action.Builder(null, "Disconnect", stop).build()).setOngoing(true).build();
     }
     private void updateNotification(String text) { ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).notify(NOTIFICATION_ID, notification(text)); }
 }

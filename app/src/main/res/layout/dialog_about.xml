@@ -11,13 +11,13 @@
         android:layout_width="72dp"
         android:layout_height="72dp"
         android:src="@drawable/ic_launcher_foreground"
-        android:contentDescription="JhopanStore VPN" />
+        android:contentDescription="JPS Tunnel" />
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:text="JhopanStore VPN"
+        android:text="JPS Tunnel"
         android:textStyle="bold"
         android:textSize="18sp"
         android:textColor="#FFFFFF" />

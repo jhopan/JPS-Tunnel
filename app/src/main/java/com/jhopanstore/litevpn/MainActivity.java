@@ -62,7 +62,7 @@ public final class MainActivity extends AppCompatActivity {
         super.onCreate(state);
         setContentView(R.layout.activity_main);
         Toolbar toolbar = findViewById(R.id.toolbar);
-        toolbar.setTitle("JhopanStore VPN");
+        toolbar.setTitle("JPS Tunnel");
         setSupportActionBar(toolbar);
         prefs = getSharedPreferences("vpn", MODE_PRIVATE);
         address = findViewById(R.id.address); uuid = findViewById(R.id.uuid); path = findViewById(R.id.path); sni = findViewById(R.id.sni); host = findViewById(R.id.host);
@@ -97,7 +97,7 @@ public final class MainActivity extends AppCompatActivity {
         if (!batteryDone) {
             new AlertDialog.Builder(this)
                 .setTitle("Mode 24/7")
-                .setMessage("Agar VPN tetap hidup saat layar mati, matikan penghemat daya (battery optimization) dan aktifkan Autostart untuk JhopanStore VPN." )
+                .setMessage("Agar VPN tetap hidup saat layar mati, matikan penghemat daya (battery optimization) dan aktifkan Autostart untuk JPS Tunnel." )
                 .setPositiveButton("Matikan penghemat daya", (d, w) -> {
                     try {
                         startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName())));
@@ -113,7 +113,7 @@ public final class MainActivity extends AppCompatActivity {
         if (!autostartDone) {
             new AlertDialog.Builder(this)
                 .setTitle("Aktifkan Autostart")
-                .setMessage("Satu langkah lagi untuk mode 24/7: aktifkan Autostart untuk JhopanStore VPN, lalu kunci aplikasi di Recents ( Recent → tahan ikon → gembok ).")
+                .setMessage("Satu langkah lagi untuk mode 24/7: aktifkan Autostart untuk JPS Tunnel, lalu kunci aplikasi di Recents ( Recent → tahan ikon → gembok ).")
                 .setPositiveButton("Aktifkan Autostart", (d, w) -> { prefs.edit().putBoolean("autostart_done", true).apply(); openAutostartSetting(); })
                 .setNegativeButton("Nanti", null)
                 .show();
@@ -161,7 +161,7 @@ public final class MainActivity extends AppCompatActivity {
         if (!batteryDone) {
             new AlertDialog.Builder(this)
                 .setTitle("VPN dimatikan sistem")
-                .setMessage("Android/penghemat daya mematikan VPN saat tidak dipakai. Agar tetap hidup 24/7:\n\n1. Matikan penghemat daya untuk JhopanStore VPN\n2. Aktifkan Autostart\n3. Kunci aplikasi di Recents ( Recent → tahan ikon → gembok )")
+                .setMessage("Android/penghemat daya mematikan VPN saat tidak dipakai. Agar tetap hidup 24/7:\n\n1. Matikan penghemat daya untuk JPS Tunnel\n2. Aktifkan Autostart\n3. Kunci aplikasi di Recents ( Recent → tahan ikon → gembok )")
                 .setPositiveButton("Matikan penghemat daya", (d, w) -> openBatterySetting())
                 .setNeutralButton("Aktifkan Autostart", (d, w) -> { prefs.edit().putBoolean("autostart_done", true).apply(); openAutostartSetting(); })
                 .setNegativeButton("Tutup", null)
@@ -357,7 +357,7 @@ public final class MainActivity extends AppCompatActivity {
         configFields.setVisibility(locked ? android.view.View.GONE : android.view.View.VISIBLE);
         lockBanner.setVisibility(locked ? android.view.View.VISIBLE : android.view.View.GONE);
         if (locked) {
-            String text = license.name.isEmpty() ? "JhopanStore VPN" : license.name;
+            String text = license.name.isEmpty() ? "JPS Tunnel" : license.name;
             if (license.expiry > 0) text += "\nBerlaku s.d. " + SimpleDateFormat.getDateInstance(SimpleDateFormat.MEDIUM).format(new Date(license.expiry));
             lockBanner.setText(text);
         }
@@ -523,7 +523,7 @@ public final class MainActivity extends AppCompatActivity {
         return manager.hasPrimaryClip() ? String.valueOf(manager.getPrimaryClip().getItemAt(0).coerceToText(this)) : "";
     }
 
-    private void copy(String value) { ((ClipboardManager) getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("JhopanStore VPN", value)); show("Copied"); }
+    private void copy(String value) { ((ClipboardManager) getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("JPS Tunnel", value)); show("Copied"); }
 
     private void readImport(Uri uri) {
         try (BufferedReader reader = new BufferedReader(new java.io.InputStreamReader(getContentResolver().openInputStream(uri), StandardCharsets.UTF_8))) {

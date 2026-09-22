@@ -30,7 +30,7 @@ public final class SplashActivity extends Activity {
         icon.setImageResource(R.drawable.ic_launcher_foreground);
         root.addView(icon, new LinearLayout.LayoutParams(dp(96), dp(96)));
         TextView title = new TextView(this);
-        title.setText("JhopanStore VPN");
+        title.setText("JPS Tunnel");
         title.setTextColor(Color.WHITE);
         title.setTextSize(24);
         title.setGravity(Gravity.CENTER);
