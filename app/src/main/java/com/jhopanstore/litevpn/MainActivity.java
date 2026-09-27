@@ -23,6 +23,8 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.content.ContextCompat;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager2.widget.ViewPager2;
 import com.jhopanstore.litevpn.core.Installation;
 import com.jhopanstore.litevpn.core.ProfileStore;
@@ -56,6 +58,8 @@ public final class MainActivity extends AppCompatActivity {
     private ProfileStore profileStore;
     private String activeProfileId;
     private boolean switchingProfile;
+    private RecyclerView profileList;
+    private boolean listMode = true;
     private Button connect;
     private boolean connected;
     private boolean showTraffic = true;
@@ -74,6 +78,8 @@ public final class MainActivity extends AppCompatActivity {
         address = findViewById(R.id.address); uuid = findViewById(R.id.uuid); path = findViewById(R.id.path); sni = findViewById(R.id.sni); host = findViewById(R.id.host);
         status = findViewById(R.id.status); traffic = findViewById(R.id.traffic); connect = findViewById(R.id.connect);
         configFields = findViewById(R.id.configFields); lockBanner = findViewById(R.id.lockBanner);
+        profileList = findViewById(R.id.profileList);
+        profileList.setLayoutManager(new LinearLayoutManager(this));
         TextView version = findViewById(R.id.version);
         try { version.setText("v" + getPackageManager().getPackageInfo(getPackageName(), 0).versionName); }
         catch (Exception ignored) { version.setVisibility(android.view.View.GONE); }
@@ -86,6 +92,8 @@ public final class MainActivity extends AppCompatActivity {
         showTraffic = prefs.getBoolean("show_traffic", true);
         traffic.setVisibility(showTraffic ? android.view.View.VISIBLE : android.view.View.GONE);
         connect.setOnClickListener(v -> { if (connected) disconnect(); else requestConnect(); });
+        findViewById(R.id.toggleFields).setOnClickListener(v -> toggleListMode());
+        findViewById(R.id.configFields).setVisibility(android.view.View.GONE);
 
         VpnService.setListener(value -> runOnUiThread(() -> onVpnState(value)));
         requestNotificationPermission();
@@ -210,6 +218,7 @@ public final class MainActivity extends AppCompatActivity {
         if (id == R.id.action_export_file) { createExportFile(); return true; }
         if (id == R.id.action_export_license) { showExportLicenseDialog(); return true; }
         if (id == R.id.action_settings) { showSettings(); return true; }
+        if (id == R.id.action_profiles) { toggleListMode(); return true; }
         if (id == R.id.action_clear) { confirmClearConfig(); return true; }
         if (id == R.id.action_about) { showAbout(); return true; }
         return super.onOptionsItemSelected(item);
@@ -432,11 +441,43 @@ public final class MainActivity extends AppCompatActivity {
         boolean hadLicense = license != null;
         try {
             VlessConfig config = VlessParser.parse(value);
-            address.setText(config.address + ":" + config.port); uuid.setText(config.uuid); path.setText(config.path); sni.setText(config.sni); host.setText(config.host);
-            if (hadLicense) { prefs.edit().remove("license_payload").apply(); license = null; show("Lisensi dilepas — pakai config sendiri"); }
-            else show("VLESS imported");
+            if (hadLicense) { prefs.edit().remove("license_payload").apply(); license = null; }
+            // save as a NEW profile, then ask its name (NekoBox/V2RayNG style)
+            ProfileStore.Profile np = new ProfileStore.Profile(ProfileStore.newId(),
+                "Profile " + (profileStore.count() + 1),
+                config.address + ":" + config.port, config.uuid, config.path, config.sni, config.host);
+            profileStore.put(np);
+            activeProfileId = np.id;
+            profileStore.setActiveId(np.id);
+            loadFieldsFrom(np);
+            askProfileNameAndSwitch(np.id);
             applyLockState();
         } catch (Exception error) { show(error.getMessage()); }
+    }
+
+    /** Prompt for profile name after import; BATAL = keep default name. */
+    private void askProfileNameAndSwitch(final String profileId) {
+        ProfileStore.Profile p = profileStore.get(profileId);
+        android.view.View form = getLayoutInflater().inflate(R.layout.dialog_profile_edit, null);
+        final android.widget.EditText nameF = form.findViewById(R.id.prof_name);
+        if (p != null) nameF.setText(p.name);
+        androidx.appcompat.app.AlertDialog dialog = new androidx.appcompat.app.AlertDialog.Builder(this)
+            .setView(form)
+            .create();
+        dialog.setOnShowListener(d -> {
+            try { dialog.getWindow().setBackgroundDrawableResource(android.graphics.Color.parseColor("#1A1A1A")); } catch (Exception ignored) {}
+        });
+        form.findViewById(R.id.prof_cancel).setOnClickListener(x -> dialog.dismiss());
+        form.findViewById(R.id.prof_save).setOnClickListener(x -> {
+            String nm = nameF.getText().toString().trim();
+            ProfileStore.Profile cur = profileStore.get(profileId);
+            if (cur != null) profileStore.put(new ProfileStore.Profile(cur.id,
+                nm.isEmpty() ? cur.name : nm, cur.address, cur.uuid, cur.path, cur.sni, cur.host));
+            renderProfileTabs();
+            dialog.dismiss();
+            show("Profil tersimpan");
+        });
+        dialog.show();
     }
 
     private void importLicense(String payload) {
@@ -531,41 +572,109 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void renderProfileTabs() {
-        android.widget.LinearLayout tabs = findViewById(R.id.profileTabs);
-        tabs.removeAllViews();
+        if (profileList == null) profileList = findViewById(R.id.profileList);
+        renderProfileList();
+        ProfileStore.Profile a = profileStore.get(activeProfileId);
+        android.widget.TextView chip = findViewById(R.id.activeProfileChip);
+        if (chip != null && a != null) chip.setText("▸ " + (a.name.isEmpty() ? "Untitled" : a.name) + "  •  " + (a.address.isEmpty() ? "-" : a.address));
+    }
+
+    private void toggleListMode() {
+        android.view.View fields = findViewById(R.id.configFields);
+        boolean show = fields.getVisibility() != android.view.View.VISIBLE;
+        fields.setVisibility(show ? android.view.View.VISIBLE : android.view.View.GONE);
+        android.widget.TextView tf = findViewById(R.id.toggleFields);
+        tf.setText(show ? "Edit ▲" : "Edit ▼");
+    }
+
+    /** RecyclerView adapter for profile cards (NekoBox style). */
+    private void renderProfileList() {
+        if (profileList.getLayoutManager() == null) profileList.setLayoutManager(new LinearLayoutManager(this));
         java.util.List<ProfileStore.Profile> list = profileStore.all();
-        for (final ProfileStore.Profile p : list) {
-            android.widget.TextView tab = new android.widget.TextView(this);
-            tab.setText(p.name.isEmpty() ? "Untitled" : p.name);
-            tab.setTextSize(12);
-            tab.setPadding(24, 6, 24, 6);
-            boolean active = p.id.equals(activeProfileId);
-            tab.setTextColor(android.graphics.Color.parseColor(active ? "#00E5FF" : "#888888"));
-            tab.setTypeface(null, active ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
-            tab.setBackgroundResource(active ? R.drawable.tab_active : R.drawable.tab_normal);
-            android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(-2, -2);
-            lp.setMargins(4, 4, 4, 4);
-            tab.setLayoutParams(lp);
-            tab.setGravity(android.view.Gravity.CENTER);
-            tab.setOnClickListener(v -> saveActiveToStore());
-            tab.setOnLongClickListener(v -> { confirmDeleteProfile(p); return true; });
-            tabs.addView(tab);
-        }
-        // "+" tab to add profile
-        if (list.size() < 10) {
-            android.widget.TextView add = new android.widget.TextView(this);
-            add.setText("+");
-            add.setTextSize(16);
-            add.setPadding(24, 6, 24, 6);
-            add.setTextColor(android.graphics.Color.parseColor("#4CAF50"));
-            add.setBackgroundResource(R.drawable.tab_normal);
-            android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(-2, -2);
-            lp.setMargins(4, 4, 4, 4);
-            add.setLayoutParams(lp);
-            add.setGravity(android.view.Gravity.CENTER);
-            add.setOnClickListener(v -> addProfile());
-            tabs.addView(add);
-        }
+        java.util.List<ProfileStore.Profile> rows = new java.util.ArrayList<>(list);
+        rows.add(null); // "+ add" row
+        profileList.setAdapter(new RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+            @Override public RecyclerView.ViewHolder onCreateViewHolder(android.view.ViewGroup parent, int viewType) {
+                android.view.View v = getLayoutInflater().inflate(R.layout.item_profile_card, parent, false);
+                return new RecyclerView.ViewHolder(v) {};
+            }
+            @Override public void onBindViewHolder(RecyclerView.ViewHolder h, int pos) {
+                android.view.View v = h.itemView;
+                android.view.View marker = v.findViewById(R.id.card_marker);
+                android.widget.TextView name = v.findViewById(R.id.card_name);
+                android.widget.TextView addr = v.findViewById(R.id.card_address);
+                android.view.View edit = v.findViewById(R.id.card_edit);
+                android.view.View del = v.findViewById(R.id.card_delete);
+                if (pos == rows.size() - 1) { // add row
+                    marker.setBackgroundColor(android.graphics.Color.parseColor("#333333"));
+                    name.setText("+ Tambah profil");
+                    name.setTextColor(android.graphics.Color.parseColor("#4CAF50"));
+                    addr.setText("");
+                    edit.setVisibility(android.view.View.GONE);
+                    del.setVisibility(android.view.View.GONE);
+                    v.setOnClickListener(x -> addProfile());
+                    return;
+                }
+                ProfileStore.Profile p = rows.get(pos);
+                boolean active = p.id.equals(activeProfileId);
+                marker.setBackgroundColor(android.graphics.Color.parseColor(active ? "#4CAF50" : "#333333"));
+                name.setText(p.name.isEmpty() ? "Untitled" : p.name);
+                name.setTextColor(android.graphics.Color.parseColor(active ? "#00E5FF" : "#FFFFFF"));
+                addr.setText((p.address.isEmpty() ? "-" : p.address) + " • " + (p.path.isEmpty() ? "/" : p.path));
+                edit.setVisibility(android.view.View.VISIBLE);
+                del.setVisibility(profileStore.count() > 1 ? android.view.View.VISIBLE : android.view.View.GONE);
+                v.setOnClickListener(x -> {
+                    saveActiveToStore();
+                    activeProfileId = p.id;
+                    profileStore.setActiveId(p.id);
+                    loadFieldsFrom(p);
+                    renderProfileTabs();
+                    renderProfileList();
+                    show("Profil aktif: " + (p.name.isEmpty() ? "Untitled" : p.name));
+                });
+                edit.setOnClickListener(x -> {
+                    // open profile edit dialog: rename + save (config edited via Edit ▼ form)
+                    saveActiveToStore();
+                    activeProfileId = p.id;
+                    profileStore.setActiveId(p.id);
+                    loadFieldsFrom(p);
+                    renderProfileTabs();
+                    renderProfileList();
+                    editProfileDialog(p);
+                    android.view.View fields = findViewById(R.id.configFields);
+                    fields.setVisibility(android.view.View.VISIBLE);
+                    android.widget.TextView tf = findViewById(R.id.toggleFields);
+                    tf.setText("Edit ▲");
+                    android.widget.ScrollView sv = findViewById(R.id.scrollView);
+                    sv.post(() -> sv.smoothScrollTo(0, fields.getTop()));
+                });
+                del.setOnClickListener(x -> confirmDeleteProfile(p));
+            }
+            @Override public int getItemCount() { return rows.size(); }
+        });
+    }
+
+    /** Rename a profile via dialog (name only; config fields via Edit ▼ form). */
+    private void editProfileDialog(final ProfileStore.Profile p) {
+        android.view.View form = getLayoutInflater().inflate(R.layout.dialog_profile_edit, null);
+        final android.widget.EditText nameF = form.findViewById(R.id.prof_name);
+        nameF.setText(p.name);
+        androidx.appcompat.app.AlertDialog dialog = new androidx.appcompat.app.AlertDialog.Builder(this)
+            .setView(form)
+            .create();
+        dialog.setOnShowListener(d -> {
+            try { dialog.getWindow().setBackgroundDrawableResource(android.graphics.Color.parseColor("#1A1A1A")); } catch (Exception ignored) {}
+        });
+        form.findViewById(R.id.prof_cancel).setOnClickListener(x -> dialog.dismiss());
+        form.findViewById(R.id.prof_save).setOnClickListener(x -> {
+            String nm = nameF.getText().toString().trim();
+            profileStore.put(new ProfileStore.Profile(p.id, nm.isEmpty() ? p.name : nm, text(address), text(uuid), text(path), text(sni), text(host)));
+            renderProfileTabs();
+            renderProfileList();
+            dialog.dismiss();
+            show("Profil disimpan");
+        });
+        dialog.show();
     }
 
     private void saveActiveToStore() {
@@ -583,6 +692,7 @@ public final class MainActivity extends AppCompatActivity {
         final ProfileStore.Profile p = new ProfileStore.Profile(ProfileStore.newId(), "Profile " + (profileStore.count() + 1), "", "", "/", "", "");
         if (!profileStore.put(p)) { show("Maksimal 10 profil"); return; }
         switchProfile(p.id);
+        if (listMode) renderProfileList();
     }
 
     private void confirmDeleteProfile(final ProfileStore.Profile p) {
@@ -599,6 +709,7 @@ public final class MainActivity extends AppCompatActivity {
                     if (a != null) loadFieldsFrom(a);
                 }
                 renderProfileTabs();
+                if (listMode) renderProfileList();
                 show("Profil dihapus");
             })
             .setNegativeButton("Batal", null)
@@ -617,7 +728,8 @@ public final class MainActivity extends AppCompatActivity {
         ProfileStore.Profile p = profileStore.get(id);
         if (p != null) loadFieldsFrom(p);
         renderProfileTabs();
-        show("Profil: " + (p.name.isEmpty() ? "Untitled" : p.name));
+        renderProfileList();
+        show("Profil: " + (p == null || p.name.isEmpty() ? "Untitled" : p.name));
     }
     private void save() {
         prefs.edit().putString("address", text(address)).putString("uuid", text(uuid)).putString("path", text(path)).putString("sni", text(sni)).putString("host", text(host)).apply();
