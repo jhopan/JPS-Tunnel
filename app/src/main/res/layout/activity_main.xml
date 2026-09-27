@@ -14,6 +14,16 @@
         android:background="#1E1E1E"
         android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar" />
 
+    <LinearLayout
+        android:id="@+id/profileTabs"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="#161616"
+        android:gravity="center"
+        android:minHeight="32dp"
+        android:paddingHorizontal="8dp" />
+
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"

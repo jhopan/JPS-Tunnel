@@ -23,7 +23,9 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.content.ContextCompat;
+import androidx.viewpager2.widget.ViewPager2;
 import com.jhopanstore.litevpn.core.Installation;
+import com.jhopanstore.litevpn.core.ProfileStore;
 import com.jhopanstore.litevpn.core.License;
 import com.jhopanstore.litevpn.core.LicenseCodec;
 import com.jhopanstore.litevpn.core.VlessConfig;
@@ -51,6 +53,9 @@ public final class MainActivity extends AppCompatActivity {
     private android.view.View configFields;
     private android.widget.TextView lockBanner;
     private License license;
+    private ProfileStore profileStore;
+    private String activeProfileId;
+    private boolean switchingProfile;
     private Button connect;
     private boolean connected;
     private boolean showTraffic = true;
@@ -65,6 +70,7 @@ public final class MainActivity extends AppCompatActivity {
         toolbar.setTitle("JPS Tunnel");
         setSupportActionBar(toolbar);
         prefs = getSharedPreferences("vpn", MODE_PRIVATE);
+        profileStore = new ProfileStore(prefs);
         address = findViewById(R.id.address); uuid = findViewById(R.id.uuid); path = findViewById(R.id.path); sni = findViewById(R.id.sni); host = findViewById(R.id.host);
         status = findViewById(R.id.status); traffic = findViewById(R.id.traffic); connect = findViewById(R.id.connect);
         configFields = findViewById(R.id.configFields); lockBanner = findViewById(R.id.lockBanner);
@@ -281,6 +287,8 @@ public final class MainActivity extends AppCompatActivity {
 
     private void clearConfig() {
         prefs.edit().remove("address").remove("uuid").remove("path").remove("sni").remove("host").remove("license_payload").apply();
+        ProfileStore.Profile a = profileStore.get(activeProfileId);
+        if (a != null) profileStore.put(new ProfileStore.Profile(a.id, a.name, "", "", "/", "", ""));
         license = null;
         address.setText(""); uuid.setText(""); path.setText("/"); sni.setText(""); host.setText("");
         applyLockState();
@@ -515,8 +523,106 @@ public final class MainActivity extends AppCompatActivity {
 
     private static int parsePort(String value) { try { int port = Integer.parseInt(value); return port > 0 && port < 65536 ? port : 443; } catch (Exception ignored) { return 443; } }
     private static String text(EditText field) { return field.getText().toString().trim(); }
-    private void load() { address.setText(prefs.getString("address", "")); uuid.setText(prefs.getString("uuid", "")); path.setText(prefs.getString("path", "/")); sni.setText(prefs.getString("sni", "")); host.setText(prefs.getString("host", "")); }
-    private void save() { prefs.edit().putString("address", text(address)).putString("uuid", text(uuid)).putString("path", text(path)).putString("sni", text(sni)).putString("host", text(host)).apply(); }
+    private void load() {
+        ProfileStore.Profile p = profileStore.ensureDefault();
+        activeProfileId = p.id;
+        address.setText(p.address); uuid.setText(p.uuid); path.setText(p.path.isEmpty() ? "/" : p.path); sni.setText(p.sni); host.setText(p.host);
+        renderProfileTabs();
+    }
+
+    private void renderProfileTabs() {
+        android.widget.LinearLayout tabs = findViewById(R.id.profileTabs);
+        tabs.removeAllViews();
+        java.util.List<ProfileStore.Profile> list = profileStore.all();
+        for (final ProfileStore.Profile p : list) {
+            android.widget.TextView tab = new android.widget.TextView(this);
+            tab.setText(p.name.isEmpty() ? "Untitled" : p.name);
+            tab.setTextSize(12);
+            tab.setPadding(24, 6, 24, 6);
+            boolean active = p.id.equals(activeProfileId);
+            tab.setTextColor(android.graphics.Color.parseColor(active ? "#00E5FF" : "#888888"));
+            tab.setTypeface(null, active ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+            tab.setBackgroundResource(active ? R.drawable.tab_active : R.drawable.tab_normal);
+            android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(-2, -2);
+            lp.setMargins(4, 4, 4, 4);
+            tab.setLayoutParams(lp);
+            tab.setGravity(android.view.Gravity.CENTER);
+            tab.setOnClickListener(v -> saveActiveToStore());
+            tab.setOnLongClickListener(v -> { confirmDeleteProfile(p); return true; });
+            tabs.addView(tab);
+        }
+        // "+" tab to add profile
+        if (list.size() < 10) {
+            android.widget.TextView add = new android.widget.TextView(this);
+            add.setText("+");
+            add.setTextSize(16);
+            add.setPadding(24, 6, 24, 6);
+            add.setTextColor(android.graphics.Color.parseColor("#4CAF50"));
+            add.setBackgroundResource(R.drawable.tab_normal);
+            android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(-2, -2);
+            lp.setMargins(4, 4, 4, 4);
+            add.setLayoutParams(lp);
+            add.setGravity(android.view.Gravity.CENTER);
+            add.setOnClickListener(v -> addProfile());
+            tabs.addView(add);
+        }
+    }
+
+    private void saveActiveToStore() {
+        profileStore.put(new ProfileStore.Profile(activeProfileId, profileName(activeProfileId),
+            text(address), text(uuid), text(path), text(sni), text(host)));
+    }
+
+    private String profileName(String id) {
+        ProfileStore.Profile p = profileStore.get(id);
+        return p == null ? "" : p.name;
+    }
+
+    private void addProfile() {
+        saveActiveToStore();
+        final ProfileStore.Profile p = new ProfileStore.Profile(ProfileStore.newId(), "Profile " + (profileStore.count() + 1), "", "", "/", "", "");
+        if (!profileStore.put(p)) { show("Maksimal 10 profil"); return; }
+        switchProfile(p.id);
+    }
+
+    private void confirmDeleteProfile(final ProfileStore.Profile p) {
+        if (profileStore.count() <= 1) { show("Minimal harus ada 1 profil"); return; }
+        if (connected) { show("Putuskan VPN dulu sebelum hapus profil"); return; }
+        new AlertDialog.Builder(this)
+            .setTitle("Hapus profil")
+            .setMessage("Hapus profil '" + (p.name.isEmpty() ? "Untitled" : p.name) + "'?")
+            .setPositiveButton("Hapus", (d, w) -> {
+                profileStore.remove(p.id);
+                if (p.id.equals(activeProfileId)) {
+                    ProfileStore.Profile a = profileStore.active();
+                    activeProfileId = a == null ? null : a.id;
+                    if (a != null) loadFieldsFrom(a);
+                }
+                renderProfileTabs();
+                show("Profil dihapus");
+            })
+            .setNegativeButton("Batal", null)
+            .show();
+    }
+
+    private void loadFieldsFrom(ProfileStore.Profile p) {
+        address.setText(p.address); uuid.setText(p.uuid); path.setText(p.path.isEmpty() ? "/" : p.path);
+        sni.setText(p.sni); host.setText(p.host);
+    }
+
+    private void switchProfile(String id) {
+        saveActiveToStore();
+        activeProfileId = id;
+        profileStore.setActiveId(id);
+        ProfileStore.Profile p = profileStore.get(id);
+        if (p != null) loadFieldsFrom(p);
+        renderProfileTabs();
+        show("Profil: " + (p.name.isEmpty() ? "Untitled" : p.name));
+    }
+    private void save() {
+        prefs.edit().putString("address", text(address)).putString("uuid", text(uuid)).putString("path", text(path)).putString("sni", text(sni)).putString("host", text(host)).apply();
+        if (activeProfileId != null) profileStore.put(new ProfileStore.Profile(activeProfileId, profileName(activeProfileId), text(address), text(uuid), text(path), text(sni), text(host)));
+    }
 
     private String clipboard() {
         ClipboardManager manager = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
