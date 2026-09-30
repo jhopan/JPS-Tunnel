@@ -11,3 +11,6 @@ CLAUDE.md
 ui-realme5.png
 .workbuddy-ai/
 *.png
+# Keep app logo
+!app/src/main/res/drawable/logo_jhopanstore.png
+!app/src/main/res/drawable-nodpi/logo_jhopanstore.png
