@@ -41,9 +41,9 @@ jobs:
         run: |
           ./gradlew assembleRelease --no-daemon
           VER="${GITHUB_REF#refs/tags/}"
-          cp app/build/outputs/apk/release/app-release.apk "JhopanStoreVPN-${VER}.apk"
-          gh release create "$VER" "JhopanStoreVPN-${VER}.apk" \
-            --title "JhopanStore VPN ${VER}" \
+          cp app/build/outputs/apk/release/app-release.apk "JPS-Tunnel-${VER}.apk"
+          gh release create "$VER" "JPS-Tunnel-${VER}.apk" \
+            --title "JPS Tunnel ${VER}" \
             --notes "Release ${VER}. APK release (debug-signed)." \
             --latest
         env:
@@ -53,11 +53,11 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: |
           ./gradlew assembleRelease --no-daemon
-          cp app/build/outputs/apk/release/app-release.apk JhopanStoreVPN.apk
+          cp app/build/outputs/apk/release/app-release.apk JPS-Tunnel.apk
           gh release delete latest --yes 2>/dev/null || true
           git push origin :refs/tags/latest 2>/dev/null || true
-          gh release create latest JhopanStoreVPN.apk \
-            --title "JhopanStore VPN (latest)" \
+          gh release create latest JPS-Tunnel.apk \
+            --title "JPS Tunnel (latest)" \
             --notes "Build otomatis dari commit ${{ github.sha }}. Ini APK release (debug-signed)." \
             --latest
         env:
