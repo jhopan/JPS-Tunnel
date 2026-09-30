@@ -227,14 +227,12 @@ public final class MainActivity extends AppCompatActivity {
         android.widget.EditText interval = form.findViewById(R.id.set_ping_interval);
         android.widget.EditText url = form.findViewById(R.id.set_ping_url);
         android.widget.CheckBox trafficBox = form.findViewById(R.id.set_traffic);
-        android.widget.CheckBox debug = form.findViewById(R.id.set_debug);
         TextView hwidView = form.findViewById(R.id.set_hwid);
         hwidView.setText(hwid);
         ping.setChecked(prefs.getBoolean("http_ping", true));
         interval.setText(String.valueOf(prefs.getInt("http_ping_interval", 3)));
         url.setText(prefs.getString("http_ping_url", VpnService.DEFAULT_PING_URL));
         trafficBox.setChecked(prefs.getBoolean("show_traffic", true));
-        debug.setChecked(prefs.getBoolean("debug_mode", false));
         ping.setOnCheckedChangeListener((b, checked) -> applyPingFormState(interval, url, checked));
         applyPingFormState(interval, url, ping.isChecked()); // fields read-only while ping is off
         androidx.appcompat.app.AlertDialog dialog = new androidx.appcompat.app.AlertDialog.Builder(this)
@@ -258,7 +256,6 @@ public final class MainActivity extends AppCompatActivity {
                     .putInt("http_ping_interval", seconds)
                     .putString("http_ping_url", pingUrl)
                     .putBoolean("show_traffic", show)
-                    .putBoolean("debug_mode", debug.isChecked())
                     .apply();
                 traffic.setVisibility(show ? android.view.View.VISIBLE : android.view.View.GONE);
                 if (!show) traffic.setText("");
