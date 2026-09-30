@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Legacy launcher icon for API 24/25: adaptive-icon in mipmap-anydpi-v26 is ignored below API 26,
+     so this layer-list keeps the logo visible on older devices instead of a blank icon. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/ic_launcher_foreground" />
+</layer-list>

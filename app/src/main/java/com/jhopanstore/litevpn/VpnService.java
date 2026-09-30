@@ -78,13 +78,22 @@ public final class VpnService extends android.net.VpnService {
     private int autoReconnects;
     private boolean terminalFailure;
     private int failedProbes;
+    /** Result of the last initial health probe; non-null means the tunnel came up but was not verified. */
+    private String lastProbeFailure;
     private boolean healthyStable;
     private long lastProbeWrite;
     private ScheduledFuture<?> pingFuture;
     private int pingFailures;
     private static volatile boolean httpPingEnabled = true;
     private static volatile int httpPingInterval = 3;
-    private static volatile String httpPingUrl = "http://connectivitycheck.gstatic.com/generate_204";
+    /**
+     * Default keep-alive target. HTTPS is only a preference, not a requirement: cleartext is
+     * permitted via res/xml/network_security_config.xml, so a user-entered http:// URL works too.
+     * (Before that config existed, an http:// default failed with "Cleartext HTTP traffic ...
+     * not permitted", tripped the reconnect logic and reported "Cannot connect" on a healthy tunnel.)
+     */
+    public static final String DEFAULT_PING_URL = "https://connectivitycheck.gstatic.com/generate_204";
+    private static volatile String httpPingUrl = DEFAULT_PING_URL;
     private final BroadcastReceiver screenReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) { scheduleHealthCheck(); }
     };
@@ -94,10 +103,31 @@ public final class VpnService extends android.net.VpnService {
         httpPingEnabled = prefs.getBoolean("http_ping", true);
         httpPingInterval = prefs.getInt("http_ping_interval", 3);
         String url = prefs.getString("http_ping_url", null);
-        httpPingUrl = url == null || url.isEmpty() ? "http://connectivitycheck.gstatic.com/generate_204" : url;
+        // Any scheme is fine: cleartext is permitted via res/xml/network_security_config.xml,
+        // so a user-supplied http:// endpoint (local router, LAN health page) works as-is.
+        httpPingUrl = (url == null || url.isEmpty()) ? DEFAULT_PING_URL : url;
         listenerStateRefresh = true; // service reschedules on next ping tick (loop lama dicancel + dibuat baru)
     }
     private static volatile boolean listenerStateRefresh;
+
+    /**
+     * Debug mode: mirror every connection step (API info, dial target, DNS, TUN, core log,
+     * probe result) into the status box under the state line. Toggled in Pengaturan.
+     */
+    private static volatile boolean debugMode;
+    private static final java.util.Deque<String> debugLines = new java.util.ArrayDeque<>();
+    private static final int DEBUG_MAX_LINES = 16;
+    private static final long CORE_LOG_THROTTLE_MS = 200;
+    private long lastCoreLog;
+    /** Canonical first line of the status box; debug/ping lines are appended below it. */
+    private String baseState = "Disconnected";
+
+    /** Apply debug-mode setting from prefs (called by MainActivity after saving Pengaturan). */
+    public static void applyDebugMode(SharedPreferences prefs) {
+        debugMode = prefs.getBoolean("debug_mode", false);
+        if (!debugMode) synchronized (debugLines) { debugLines.clear(); }
+    }
+    public static boolean isDebugMode() { return debugMode; }
 
     public static void setListener(Listener value) { listener = value; }
     public static void start(Context context, String uri) {
@@ -110,12 +140,13 @@ public final class VpnService extends android.net.VpnService {
     @Override public void onCreate() {
         super.onCreate();
         createChannel();
+        applyDebugMode(getSharedPreferences("vpn", MODE_PRIVATE));
         try {
             SetupOptions options = new SetupOptions();
             options.setBasePath(getFilesDir().getAbsolutePath());
             Libbox.setup(options);
         } catch (Exception error) { Log.e("VpnService", "libbox setup", error); }
-        heartbeat.scheduleAtFixedRate(this::writeHeartbeat, 0, HEARTBEAT_MS, TimeUnit.MILLISECONDS);
+        heartbeat.scheduleWithFixedDelay(this::writeHeartbeat, 0, HEARTBEAT_MS, TimeUnit.MILLISECONDS);
         scheduleProbe();
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_SCREEN_ON);
@@ -129,7 +160,7 @@ public final class VpnService extends android.net.VpnService {
         if (heartbeat.isShutdown()) { // reused instance after stopSelf(): rebuild executors
             heartbeat = Executors.newSingleThreadScheduledExecutor();
             worker = Executors.newSingleThreadExecutor();
-            heartbeat.scheduleAtFixedRate(this::writeHeartbeat, 0, HEARTBEAT_MS, TimeUnit.MILLISECONDS);
+            heartbeat.scheduleWithFixedDelay(this::writeHeartbeat, 0, HEARTBEAT_MS, TimeUnit.MILLISECONDS);
         }
         ConnectivityManager manager = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
         NetworkCapabilities caps = manager.getNetworkCapabilities(manager.getActiveNetwork());
@@ -141,6 +172,8 @@ public final class VpnService extends android.net.VpnService {
             connecting = true;
         }
         statusPrefs().edit().putString(KEY_URI, uri).apply();
+        clearSteps(); // fresh user-initiated attempt: start the log clean
+        clearPings();
         startForeground(NOTIFICATION_ID, notification("Connecting…"));
         setState("Connecting…");
         worker.execute(() -> {
@@ -152,16 +185,25 @@ public final class VpnService extends android.net.VpnService {
 
     private void connect(String uri) {
         try {
+            logStep("API: libbox sing-box " + coreVersion() + " • stack " + SingboxConfig.STACK
+                + " • proxy 127.0.0.1:" + SingboxConfig.PROXY_PORT);
             VlessConfig original = VlessParser.parse(uri);
+            logStep("Menghubungkan ke " + original.address + ":" + original.port);
+            logStep("uuid " + clip(original.uuid, 8) + " • path " + original.path
+                + " • sni " + original.sni + " • host " + original.host);
             String dialAddress = resolveIpv4(original.address);
+            if (!dialAddress.equals(original.address)) logStep("DNS " + original.address + " → " + dialAddress);
             VlessConfig config = new VlessConfig(dialAddress, original.port, original.uuid, original.path, original.sni, original.host, original.allowInsecure);
-            String json = SingboxConfig.build(config, getFilesDir().getAbsolutePath());
+            String json = SingboxConfig.build(config, getFilesDir().getAbsolutePath(), debugMode);
             Libbox.checkConfig(json);
+            logStep("Config sing-box valid");
             closeCore();
             service = Libbox.newService(json, new Platform());
             service.start();
+            logStep("Core sing-box jalan");
             synchronized (lifecycleLock) {
                 if (!connecting) { // user pressed DISCONNECT while we were building: honor it
+                    logStep("Dibatalkan pengguna");
                     closeCore();
                     return;
                 }
@@ -171,8 +213,14 @@ public final class VpnService extends android.net.VpnService {
             setState("Checking internet…");
             String failure = awaitHealthyTunnel();
             synchronized (lifecycleLock) { if (!running) { closeCore(); return; } } // disconnected while checking
-            if (failure != null) { fail(failure); return; }
+            if (failure != null) { logStep("Gagal: " + failure); fail(failure); return; }
             updateNotification("Connected");
+            // The step log is a diagnostic for the dial, not something to stare at forever. Once the
+            // tunnel is up AND the probe really got through, drop it so the box settles to a clean
+            // "Connected" + keep-alive ping lines. If the probe did NOT get through, keep every step —
+            // that is precisely the case worth reading afterwards.
+            if (lastProbeFailure == null) clearSteps();
+            else logStep("Tunnel jalan tapi probe belum tembus: " + lastProbeFailure);
             setState("Connected");
             resetMeter();
             synchronized (lifecycleLock) { healthyStable = false; pingFailures = 0; }
@@ -180,7 +228,9 @@ public final class VpnService extends android.net.VpnService {
             scheduleHttpPing();
         } catch (Exception error) {
             Log.e("VpnService", "connect", error);
-            fail(connectionFailure(error));
+            String reason = connectionFailure(error);
+            logStep("Gagal: " + reason);
+            fail(reason);
         }
     }
 
@@ -200,9 +250,15 @@ public final class VpnService extends android.net.VpnService {
             try { builder.addDisallowedApplication(getPackageName()); } catch (Exception ignored) {}
             try {
                 tun = builder.establish();
-                if (tun == null) Log.e("VpnService", "establish() returned null — VPN consent revoked or another VPN active");
+                if (tun == null) {
+                    Log.e("VpnService", "establish() returned null — VPN consent revoked or another VPN active");
+                    logStep("TUN gagal: izin VPN dicabut / VPN lain aktif");
+                } else {
+                    logStep("TUN 172.19.0.1/30 mtu " + options.getMTU() + " fd " + tun.getFd());
+                }
             } catch (Exception error) {
                 Log.e("VpnService", "establish() failed", error);
+                logStep("TUN gagal: " + error.getClass().getSimpleName());
             }
             return tun == null ? -1 : tun.getFd();
         }
@@ -220,7 +276,28 @@ public final class VpnService extends android.net.VpnService {
         @Override public boolean underNetworkExtension() { return false; }
         @Override public boolean usePlatformAutoDetectInterfaceControl() { return true; }
         @Override public boolean useProcFS() { return false; }
-        @Override public void writeLog(String message) { Log.i("libbox", message); }
+        @Override public void writeLog(String message) {
+            Log.i("libbox", message);
+            if (!debugMode || message == null) return;
+            long now = System.currentTimeMillis();
+            if (now - lastCoreLog < CORE_LOG_THROTTLE_MS) return; // debug level is chatty
+            String lower = message.toLowerCase();
+            // WebSocket 1006 (abnormal closure) is how a VLESS/WS stream normally ends; the core logs
+            // it at ERROR but it is expected, and surfacing it would flood the box. Still in logcat.
+            if (lower.contains("ws closed: 1006")) return;
+            boolean failure = (lower.contains("error") && !lower.contains("noerror"))
+                || lower.contains("warn") || lower.contains("fatal")
+                || lower.contains("refused") || lower.contains("timeout") || lower.contains("reset by peer");
+            // While the tunnel is still being built, dial/handshake detail is exactly what explains a
+            // failure, so accept it too. Once connected it is dropped: steady-state traffic would
+            // otherwise flush the connection steps straight out of the status box.
+            boolean handshake = connecting && (lower.contains("outbound") || lower.contains("dial")
+                || lower.contains("vless") || lower.contains("handshake") || lower.contains("websocket")
+                || lower.contains("tls") || lower.contains("proxy") || lower.contains("tun"));
+            if (!failure && !handshake) return;
+            lastCoreLog = now;
+            logStep("core: " + clip(stripAnsi(message), 110));
+        }
     }
 
     private synchronized void startNetworkMonitor(InterfaceUpdateListener value) {
@@ -265,9 +342,77 @@ public final class VpnService extends android.net.VpnService {
 
     private SharedPreferences statusPrefs() { return getSharedPreferences(STATUS_PREFS, MODE_PRIVATE); }
 
+    /**
+     * Sets the canonical first line of the status box. Always goes through here (never straight to
+     * {@code state()}) so debug/ping lines can be appended underneath without corrupting the prefix
+     * that MainActivity.onVpnState matches on.
+     */
     private void setState(String value) {
-        statusPrefs().edit().putString(KEY_STATE, value).putLong(KEY_LAST_SEEN, running ? System.currentTimeMillis() : 0).apply();
-        state(value);
+        baseState = value == null ? "Disconnected" : value;
+        emit(baseState);
+    }
+
+    /** Appends a step to the debug log and repaints. No-op unless debug mode is on. */
+    private void logStep(String line) {
+        if (!debugMode || line == null || line.isEmpty()) return;
+        synchronized (debugLines) {
+            debugLines.addLast(line);
+            while (debugLines.size() > DEBUG_MAX_LINES) debugLines.pollFirst();
+        }
+        emit(baseState);
+    }
+
+    /**
+     * Drops the step log without repainting (the caller's next {@link #setState} does that). Used at
+     * the start of a fresh attempt and once a connection is confirmed healthy, so the box shows only
+     * the state line plus the HTTP ping lines.
+     */
+    private void clearSteps() {
+        synchronized (debugLines) { debugLines.clear(); }
+    }
+
+    /**
+     * Drops the keep-alive lines. Without this a stale "HTTP ping ok" from the previous session keeps
+     * showing under "Disconnected", which reads as if the tunnel were still up.
+     */
+    private void clearPings() {
+        synchronized (pingLines) { pingLines.clear(); }
+    }
+
+    /** Composes the status text: canonical state, then debug steps, then HTTP ping lines. */
+    private void emit(String value) {
+        String full = value == null ? "Disconnected" : value;
+        StringBuilder extra = new StringBuilder();
+        if (debugMode) {
+            synchronized (debugLines) { for (String line : debugLines) extra.append('\n').append(line); }
+        }
+        synchronized (pingLines) {
+            for (String line : pingLines) extra.append('\n').append(line);
+        }
+        if (extra.length() > 0) full = full + extra;
+        statusPrefs().edit().putString(KEY_STATE, full).putLong(KEY_LAST_SEEN, running ? System.currentTimeMillis() : 0).apply();
+        state(full);
+    }
+
+    /** Shortens a value for display: first {@code keep} chars of the first line. */
+    private static String clip(String value, int keep) {
+        if (value == null) return "-";
+        String one = value.replace('\n', ' ').trim();
+        if (one.isEmpty()) return "-";
+        return one.length() <= keep ? one : one.substring(0, keep) + "…";
+    }
+
+    /** sing-box log lines carry ANSI colour codes, which render as garbage inside a TextView. */
+    private static String stripAnsi(String value) {
+        return value == null ? "" : value.replaceAll("\u001B?\\[[0-9;]*m", "");
+    }
+
+    /** sing-box version baked into the bundled libbox AAR (Libbox.version() -> Go C.Version). */
+    private static String coreVersion() {
+        try {
+            String value = Libbox.version();
+            return value == null || value.trim().isEmpty() ? "?" : value.trim();
+        } catch (Throwable ignored) { return "?"; }
     }
 
     private void writeHeartbeat() {
@@ -281,7 +426,13 @@ public final class VpnService extends android.net.VpnService {
         long tx = android.net.TrafficStats.getUidTxBytes(android.os.Process.myUid());
         meterBaseRx = rx < 0 ? 0 : rx;
         meterBaseTx = tx < 0 ? 0 : tx;
-        statusPrefs().edit().putLong("session_rx", 0).putLong("session_tx", 0).apply();
+        // Publish the baseline so MainActivity can derive a live session total from TrafficStats on its
+        // own 2 s tick. writeMeter() only runs on probe ticks (30–90 s), so relying on session_rx alone
+        // made the counters sit still between probes.
+        statusPrefs().edit()
+            .putLong("session_rx", 0).putLong("session_tx", 0)
+            .putLong("meter_base_rx", meterBaseRx).putLong("meter_base_tx", meterBaseTx)
+            .apply();
     }
 
     private void writeMeter() {
@@ -319,30 +470,48 @@ public final class VpnService extends android.net.VpnService {
     private void runHttpPing() {
         synchronized (lifecycleLock) { if (!running || connecting) return; }
         if (listenerStateRefresh) { scheduleHttpPing(); return; } // settings changed: reschedule with new values
-        String failure = pingUrl(httpPingUrl);
-        long now = System.currentTimeMillis();
-        if (failure == null) {
+        long started = System.currentTimeMillis();
+        PingOutcome outcome = pingUrl(httpPingUrl);
+        long elapsed = System.currentTimeMillis() - started;
+        String time = android.text.format.DateFormat.format("HH:mm:ss", started).toString();
+        if (outcome.failure == null) {
             pingFailures = 0;
-            pushPingLine("HTTP ping ok " + android.text.format.DateFormat.format("HH:mm:ss", now));
+            // Report the real status line, e.g. "HTTP ping 204 No Content (86 ms) 08:35:12".
+            pushPingLine("HTTP ping " + outcome.code + (outcome.phrase.isEmpty() ? "" : " " + outcome.phrase)
+                + " (" + elapsed + " ms) " + time);
             return;
         }
         pingFailures++;
-        pushPingLine("HTTP ping gagal (" + pingFailures + ") " + android.text.format.DateFormat.format("HH:mm:ss", now));
+        pushPingLine("HTTP ping gagal (" + pingFailures + ") " + time + " — " + clip(outcome.failure, 60)
+            + " (" + elapsed + " ms)");
         if (pingFailures >= 3) { pushPingLine("Percobaan koneksi ulang otomatis…"); reconnectTunnel(); }
     }
 
-    /** HTTP ping status lines, shown in the app status box under "Connected". Max 5, then cleared. */
+    /** HTTP ping status lines, shown in the app status box under "Connected". Rolling window of 5. */
     private static final java.util.Deque<String> pingLines = new java.util.ArrayDeque<>();
-    private static void pushPingLine(String line) {
+    private static final int PING_MAX_LINES = 5;
+    private void pushPingLine(String line) {
         synchronized (pingLines) {
             pingLines.addLast(line);
-            while (pingLines.size() > 5) pingLines.pollFirst();
-            if (pingLines.size() >= 5) pingLines.clear(); // full batch → clear and start over
+            // Keep the newest PING_MAX_LINES. Do NOT wipe the whole batch when it fills up: doing that
+            // used to blank the box for one full ping interval every 5 pings, so the status appeared to
+            // lose its keep-alive lines right after connecting.
+            while (pingLines.size() > PING_MAX_LINES) pingLines.pollFirst();
         }
-        state("Connected\n" + String.join("\n", pingLines));
+        emit(baseState);
     }
 
-    private String pingUrl(String target) {
+    /** One keep-alive probe: HTTP status (code + reason phrase) plus a failure reason when it failed. */
+    private static final class PingOutcome {
+        final int code;        // -1 when the request produced no response at all
+        final String phrase;   // "OK", "No Content", … ("" when unknown)
+        final String failure;  // null when the probe succeeded
+        PingOutcome(int code, String phrase, String failure) {
+            this.code = code; this.phrase = phrase; this.failure = failure;
+        }
+    }
+
+    private PingOutcome pingUrl(String target) {
         HttpURLConnection connection = null;
         try {
             Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress("127.0.0.1", SingboxConfig.PROXY_PORT));
@@ -352,10 +521,14 @@ public final class VpnService extends android.net.VpnService {
             connection.setReadTimeout(5000);
             connection.setInstanceFollowRedirects(false);
             int code = connection.getResponseCode();
-            if (code >= 200 && code < 400) return null;
-            return "HTTP " + code;
+            String phrase = connection.getResponseMessage();
+            if (phrase == null) phrase = "";
+            if (code >= 200 && code < 400) return new PingOutcome(code, phrase, null);
+            return new PingOutcome(code, phrase, "HTTP " + code + (phrase.isEmpty() ? "" : " " + phrase));
         } catch (Exception error) {
-            return String.valueOf(error.getMessage());
+            String message = error.getMessage();
+            if (message == null || message.isEmpty()) message = error.getClass().getSimpleName();
+            return new PingOutcome(-1, "", message);
         } finally {
             if (connection != null) connection.disconnect();
         }
@@ -385,8 +558,13 @@ public final class VpnService extends android.net.VpnService {
             if (reconnect) { running = false; connecting = true; failedProbes = 0; autoReconnects++; }
             else { failedProbes = 0; }
         }
-        if (reconnect) reconnectTunnel();
-        else fail("Cannot connect: check server, port, path, SNI, and Host");
+        if (reconnect) {
+            logStep("Reconnect otomatis " + autoReconnects + "/" + MAX_AUTO_RECONNECTS + "…");
+            reconnectTunnel();
+        } else {
+            logStep("Gagal setelah " + PROBE_FAIL_LIMIT + "× probe berturut-turut");
+            fail("Cannot connect: check server, port, path, SNI, and Host");
+        }
     }
 
     private String verifyTunnel() {
@@ -399,12 +577,16 @@ public final class VpnService extends android.net.VpnService {
             connection.setReadTimeout(PROBE_TIMEOUT_MS);
             int code = connection.getResponseCode();
             if (code == HttpURLConnection.HTTP_NO_CONTENT || code == HttpURLConnection.HTTP_OK || code == HttpURLConnection.HTTP_ACCEPTED) return null;
+            logStep("Probe " + HEALTH_URL + " → HTTP " + code);
             return "Internet check failed: server returned HTTP " + code;
         } catch (SocketTimeoutException error) {
+            logStep("Probe timeout setelah " + PROBE_TIMEOUT_MS + " ms");
             return "Internet check timed out";
         } catch (java.net.ConnectException error) {
+            logStep("Proxy 127.0.0.1:" + SingboxConfig.PROXY_PORT + " belum siap");
             return "VPN proxy unavailable";
         } catch (Exception error) {
+            logStep("Probe error: " + error.getClass().getSimpleName());
             return "Internet check failed";
         } finally {
             if (connection != null) connection.disconnect();
@@ -420,9 +602,15 @@ public final class VpnService extends android.net.VpnService {
             synchronized (lifecycleLock) { if (!running || connecting) return null; }
             updateNotification("Checking internet… (" + (attempt + 1) + "/" + PROBE_ATTEMPTS + ")");
             last = verifyTunnel();
-            if (last == null) { synchronized (lifecycleLock) { failedProbes = 0; } return null; }
+            if (last == null) {
+                synchronized (lifecycleLock) { failedProbes = 0; }
+                lastProbeFailure = null;
+                return null;
+            }
+            logStep("Probe " + (attempt + 1) + "/" + PROBE_ATTEMPTS + " gagal: " + last);
         }
         // Non-blocking: tunnel is up; truthfulness is handled by the periodic checkTunnel.
+        lastProbeFailure = last;
         return null;
     }
 
@@ -437,6 +625,15 @@ public final class VpnService extends android.net.VpnService {
     private void reconnectTunnel() {
         String uri = statusPrefs().getString(KEY_URI, null);
         if (uri == null) { disconnect(); return; }
+        // Must mirror onStartCommand: connect() aborts itself ("Dibatalkan pengguna") when `connecting`
+        // is false as the core comes up, so an auto-reconnect that skipped this used to close the very
+        // tunnel it just started, leaving the proxy dead and the next probe failing.
+        synchronized (lifecycleLock) {
+            if (running || connecting) closeCore();
+            running = false;
+            connecting = true;
+            failedProbes = 0;
+        }
         updateNotification("Reconnecting…");
         setState("Reconnecting…");
         worker.execute(() -> connect(uri));
@@ -445,10 +642,10 @@ public final class VpnService extends android.net.VpnService {
     private void fail(String reason) {
         synchronized (lifecycleLock) { connecting = false; running = false; terminalFailure = true; }
         closeCore();
-        statusPrefs().edit().remove(KEY_URI).putString(KEY_STATE, reason).putLong(KEY_LAST_SEEN, 0).putLong(KEY_LAST_PROBE, 0).apply();
+        statusPrefs().edit().remove(KEY_URI).putLong(KEY_LAST_PROBE, 0).apply();
+        setState(reason); // keeps the debug log attached so the failure stays readable afterwards
         ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).cancel(NOTIFICATION_ID);
         stopForeground(STOP_FOREGROUND_REMOVE);
-        state(reason);
         stopSelf();
     }
 
@@ -464,10 +661,11 @@ public final class VpnService extends android.net.VpnService {
         if (pingFuture != null) { pingFuture.cancel(false); pingFuture = null; }
         writeMeter();
         closeCore();
-        statusPrefs().edit().remove(KEY_URI).putString(KEY_STATE, "Disconnected").putLong(KEY_LAST_SEEN, 0).putLong(KEY_LAST_PROBE, 0).apply();
+        statusPrefs().edit().remove(KEY_URI).putLong(KEY_LAST_PROBE, 0).apply();
+        clearPings(); // no stale "HTTP ping ok" under "Disconnected"
+        setState("Disconnected");
         ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).cancel(NOTIFICATION_ID);
         stopForeground(STOP_FOREGROUND_REMOVE);
-        state("Disconnected");
         stopSelf();
     }
     @Override public void onDestroy() { boolean failed; synchronized (lifecycleLock) { running = false; connecting = false; failed = terminalFailure; } closeCore(); heartbeat.shutdownNow(); worker.shutdownNow(); try { unregisterReceiver(screenReceiver); } catch (Exception ignored) {} if (!failed) statusPrefs().edit().putString(KEY_STATE, "Disconnected").putLong(KEY_LAST_SEEN, 0).putLong(KEY_LAST_PROBE, 0).apply(); super.onDestroy(); }

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Same posture as v2rayNG / Clash / Hiddify: a proxy client must be able to reach plain-HTTP
+  endpoints, because the keep-alive / health-check URL is user-configurable and the actual
+  confidentiality comes from the tunnel, not from the probe.
+
+  Without this, targetSdk 28+ defaults usesCleartextTraffic to false and every http:// ping
+  fails with "Cleartext HTTP traffic to <host> not permitted" — which used to trip the
+  reconnect logic and report "Cannot connect" on a perfectly healthy tunnel.
+-->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <!-- user CAs allowed so custom / self-signed server setups can be tested -->
+            <certificates
+                src="user"
+                tools:ignore="AcceptsUserCertificates" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

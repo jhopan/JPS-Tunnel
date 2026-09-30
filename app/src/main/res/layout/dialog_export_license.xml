@@ -15,6 +15,7 @@
         android:textColor="#FFFFFF" />
     <EditText
         android:id="@+id/lic_name"
+        android:inputType="text"
         android:layout_width="match_parent"
         android:layout_height="46dp"
         android:layout_marginTop="6dp"
@@ -35,6 +36,7 @@
         android:textColor="#FFFFFF" />
     <EditText
         android:id="@+id/lic_hwid"
+        android:inputType="textCapCharacters|textNoSuggestions"
         android:layout_width="match_parent"
         android:layout_height="46dp"
         android:layout_marginTop="6dp"
@@ -56,6 +58,7 @@
         android:textColor="#FFFFFF" />
     <EditText
         android:id="@+id/lic_expiry"
+        android:inputType="datetime"
         android:layout_width="match_parent"
         android:layout_height="46dp"
         android:layout_marginTop="6dp"

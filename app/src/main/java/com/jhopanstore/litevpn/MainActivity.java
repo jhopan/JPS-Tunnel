@@ -25,7 +25,6 @@ import androidx.appcompat.widget.Toolbar;
 import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
-import androidx.viewpager2.widget.ViewPager2;
 import com.jhopanstore.litevpn.core.Installation;
 import com.jhopanstore.litevpn.core.ProfileStore;
 import com.jhopanstore.litevpn.core.License;
@@ -35,7 +34,6 @@ import com.jhopanstore.litevpn.core.VlessParser;
 import java.io.BufferedReader;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
@@ -54,14 +52,16 @@ public final class MainActivity extends AppCompatActivity {
     private String hwid;
     private android.view.View configFields;
     private android.widget.TextView lockBanner;
+    private android.widget.TextView toggleFields;
+    private boolean fieldsExpanded;
     private License license;
     private ProfileStore profileStore;
     private String activeProfileId;
-    private boolean switchingProfile;
     private RecyclerView profileList;
-    private boolean listMode = true;
     private Button connect;
     private boolean connected;
+    /** Previous "Connected" flag, so the meter resets on a real transition instead of every repaint. */
+    private boolean stateWasConnected;
     private boolean showTraffic = true;
     private long totalRx, totalTx, lastRx, lastTx, lastSample;
     private boolean hasBaseline;
@@ -77,11 +77,19 @@ public final class MainActivity extends AppCompatActivity {
         profileStore = new ProfileStore(prefs);
         address = findViewById(R.id.address); uuid = findViewById(R.id.uuid); path = findViewById(R.id.path); sni = findViewById(R.id.sni); host = findViewById(R.id.host);
         status = findViewById(R.id.status); traffic = findViewById(R.id.traffic); connect = findViewById(R.id.connect);
+        // status box is height-capped, so make it scrollable: in debug mode the log can exceed the cap
+        status.setMovementMethod(new android.text.method.ScrollingMovementMethod());
         configFields = findViewById(R.id.configFields); lockBanner = findViewById(R.id.lockBanner);
+        toggleFields = findViewById(R.id.toggleFields);
         profileList = findViewById(R.id.profileList);
         profileList.setLayoutManager(new LinearLayoutManager(this));
         TextView version = findViewById(R.id.version);
-        try { version.setText("v" + getPackageManager().getPackageInfo(getPackageName(), 0).versionName); }
+        try {
+            android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
+            String installed = android.text.format.DateFormat.format("dd/MM HH:mm", info.lastUpdateTime).toString();
+            // install stamp makes it obvious which APK is actually running
+            version.setText("v" + info.versionName + " • terpasang " + installed);
+        }
         catch (Exception ignored) { version.setVisibility(android.view.View.GONE); }
         load();
         hwid = Installation.id(this);
@@ -92,8 +100,7 @@ public final class MainActivity extends AppCompatActivity {
         showTraffic = prefs.getBoolean("show_traffic", true);
         traffic.setVisibility(showTraffic ? android.view.View.VISIBLE : android.view.View.GONE);
         connect.setOnClickListener(v -> { if (connected) disconnect(); else requestConnect(); });
-        findViewById(R.id.toggleFields).setOnClickListener(v -> toggleListMode());
-        findViewById(R.id.configFields).setVisibility(android.view.View.GONE);
+        toggleFields.setOnClickListener(v -> toggleConfigFields());
 
         VpnService.setListener(value -> runOnUiThread(() -> onVpnState(value)));
         requestNotificationPermission();
@@ -202,7 +209,6 @@ public final class MainActivity extends AppCompatActivity {
     @Override protected void onPause() {
         super.onPause();
         handler.removeCallbacks(trafficTask);
-        saveTotals();
     }
 
     @Override public boolean onCreateOptionsMenu(Menu menu) {
@@ -218,7 +224,6 @@ public final class MainActivity extends AppCompatActivity {
         if (id == R.id.action_export_file) { createExportFile(); return true; }
         if (id == R.id.action_export_license) { showExportLicenseDialog(); return true; }
         if (id == R.id.action_settings) { showSettings(); return true; }
-        if (id == R.id.action_profiles) { toggleListMode(); return true; }
         if (id == R.id.action_clear) { confirmClearConfig(); return true; }
         if (id == R.id.action_about) { showAbout(); return true; }
         return super.onOptionsItemSelected(item);
@@ -229,20 +234,22 @@ public final class MainActivity extends AppCompatActivity {
         android.widget.CheckBox ping = form.findViewById(R.id.set_ping);
         android.widget.EditText interval = form.findViewById(R.id.set_ping_interval);
         android.widget.EditText url = form.findViewById(R.id.set_ping_url);
-        android.widget.CheckBox traffic = form.findViewById(R.id.set_traffic);
+        android.widget.CheckBox trafficBox = form.findViewById(R.id.set_traffic);
+        android.widget.CheckBox debug = form.findViewById(R.id.set_debug);
         TextView hwidView = form.findViewById(R.id.set_hwid);
         hwidView.setText(hwid);
         ping.setChecked(prefs.getBoolean("http_ping", true));
         interval.setText(String.valueOf(prefs.getInt("http_ping_interval", 3)));
-        url.setText(prefs.getString("http_ping_url", "http://connectivitycheck.gstatic.com/generate_204"));
-        traffic.setChecked(prefs.getBoolean("show_traffic", true));
-        applyFormState(form, ping.isChecked());
-        ping.setOnCheckedChangeListener((b, checked) -> applyFormState(form, checked)); // enable → fields editable; off → read-only
+        url.setText(prefs.getString("http_ping_url", VpnService.DEFAULT_PING_URL));
+        trafficBox.setChecked(prefs.getBoolean("show_traffic", true));
+        debug.setChecked(prefs.getBoolean("debug_mode", false));
+        ping.setOnCheckedChangeListener((b, checked) -> applyPingFormState(interval, url, checked));
+        applyPingFormState(interval, url, ping.isChecked()); // fields read-only while ping is off
         androidx.appcompat.app.AlertDialog dialog = new androidx.appcompat.app.AlertDialog.Builder(this)
             .setView(form)
             .create();
         dialog.setOnShowListener(d -> {
-            try { dialog.getWindow().setBackgroundDrawableResource(android.graphics.Color.parseColor("#1A1A1A")); } catch (Exception ignored) {}
+            try { dialog.getWindow().setBackgroundDrawableResource(R.color.dialog_background); } catch (Exception ignored) {}
         });
         form.findViewById(R.id.set_copy_hwid).setOnClickListener(v -> copy(hwid));
         form.findViewById(R.id.set_cancel).setOnClickListener(v -> dialog.dismiss());
@@ -252,19 +259,21 @@ public final class MainActivity extends AppCompatActivity {
                 try { seconds = Integer.parseInt(interval.getText().toString().trim()); } catch (Exception ignored) { seconds = 3; }
                 if (seconds < 1) seconds = 1;
                 String pingUrl = url.getText().toString().trim();
-                if (pingUrl.isEmpty()) pingUrl = "http://connectivitycheck.gstatic.com/generate_204";
-                boolean show = traffic.isChecked();
+                if (pingUrl.isEmpty()) pingUrl = VpnService.DEFAULT_PING_URL;
+                boolean show = trafficBox.isChecked();
                 prefs.edit()
                     .putBoolean("http_ping", ping.isChecked())
                     .putInt("http_ping_interval", seconds)
                     .putString("http_ping_url", pingUrl)
                     .putBoolean("show_traffic", show)
+                    .putBoolean("debug_mode", debug.isChecked())
                     .apply();
                 traffic.setVisibility(show ? android.view.View.VISIBLE : android.view.View.GONE);
                 if (!show) traffic.setText("");
                 showTraffic = show; // live update: meter row follows the setting immediately
                 hasBaseline = false;
                 VpnService.applyHttpPing(prefs);
+                VpnService.applyDebugMode(prefs);
                 dialog.dismiss();
                 show("Pengaturan disimpan");
             } catch (Exception error) {
@@ -274,14 +283,10 @@ public final class MainActivity extends AppCompatActivity {
         dialog.show();
     }
 
-    /** Fields only editable when HTTP ping is enabled; disabled = read-only for safety. */
-    private void applyFormState(android.view.View form, boolean pingEnabled) {
-        android.widget.EditText interval = form.findViewById(R.id.set_ping_interval);
-        android.widget.EditText url = form.findViewById(R.id.set_ping_url);
-        interval.setEnabled(pingEnabled);
-        url.setEnabled(pingEnabled);
-        interval.setAlpha(pingEnabled ? 1f : 0.4f);
-        url.setAlpha(pingEnabled ? 1f : 0.4f);
+    /** Ping interval/URL are only editable while HTTP ping is enabled. */
+    private static void applyPingFormState(android.widget.EditText interval, android.widget.EditText url, boolean enabled) {
+        interval.setEnabled(enabled); url.setEnabled(enabled);
+        interval.setAlpha(enabled ? 1f : 0.4f); url.setAlpha(enabled ? 1f : 0.4f);
     }
 
     private void confirmClearConfig() {
@@ -314,7 +319,7 @@ public final class MainActivity extends AppCompatActivity {
                 .setView(view)
                 .create();
             dialog.setOnShowListener(d -> {
-                try { dialog.getWindow().setBackgroundDrawableResource(android.graphics.Color.parseColor("#1A1A1A")); } catch (Exception ignored) {}
+                try { dialog.getWindow().setBackgroundDrawableResource(R.color.dialog_background); } catch (Exception ignored) {}
             });
             view.findViewById(R.id.about_telegram).setOnClickListener(v -> {
                 try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/jhopan_05"))); }
@@ -353,12 +358,39 @@ public final class MainActivity extends AppCompatActivity {
 
     private void requestConnect() {
         if (connected) return; // guard spam-click
+        ProfileStore.Profile active = activeProfileId == null ? null : profileStore.get(activeProfileId);
+        if (license == null && (active == null || !ProfileStore.hasConfig(active))) {
+            show(noConfigMessage(active)); // empty profile: explain instead of "Invalid VLESS address"
+            return;
+        }
         try {
             String uri = activeUri();
             VlessParser.parse(uri);
             Intent intent = android.net.VpnService.prepare(this);
             if (intent == null) connect(uri); else startActivityForResult(intent, VPN_PERMISSION);
-        } catch (Exception error) { show(error.getMessage()); }
+        } catch (Exception error) { show(configError(error)); }
+    }
+
+    /** Tell the user which profile is empty and whether another one can be used instead. */
+    private String noConfigMessage(ProfileStore.Profile active) {
+        ProfileStore.Profile other = null;
+        for (ProfileStore.Profile p : profileStore.all()) {
+            if (ProfileStore.hasConfig(p) && (active == null || !p.id.equals(active.id))) { other = p; break; }
+        }
+        if (other != null) return "Profil ini kosong. Pilih profil '" + (other.name.isEmpty() ? "Untitled" : other.name) + "' atau import link vless:// dulu.";
+        if (active != null && !fieldsExpanded) return "Belum ada config. Tap 'Edit config' atau import link vless:// dulu.";
+        return "Belum ada config. Import link vless:// dulu.";
+    }
+
+    /** Translate parser messages into something a customer can act on. */
+    private static String configError(Exception error) {
+        String text = String.valueOf(error.getMessage());
+        if (text.contains("Invalid VLESS address")) return "Config tidak lengkap: address atau UUID kosong/salah";
+        if (text.contains("Invalid UUID")) return "UUID tidak valid";
+        if (text.contains("Link must start")) return "Config harus diawali vless://";
+        if (text.contains("Only VLESS")) return "Hanya VLESS + WebSocket + TLS yang didukung";
+        if (text.contains("OneRing")) return "SNI OneRing tidak didukung";
+        return text;
     }
 
     private String activeUri() {
@@ -371,13 +403,25 @@ public final class MainActivity extends AppCompatActivity {
 
     private void applyLockState() {
         boolean locked = license != null && license.lock;
-        configFields.setVisibility(locked ? android.view.View.GONE : android.view.View.VISIBLE);
+        if (locked) fieldsExpanded = false; // locked license never shows the raw config
+        configFields.setVisibility(fieldsExpanded ? android.view.View.VISIBLE : android.view.View.GONE);
+        toggleFields.setVisibility(locked ? android.view.View.GONE : android.view.View.VISIBLE);
+        toggleFields.setText(fieldsExpanded ? "Edit config ▲" : "Edit config ▼");
         lockBanner.setVisibility(locked ? android.view.View.VISIBLE : android.view.View.GONE);
         if (locked) {
             String text = license.name.isEmpty() ? "JPS Tunnel" : license.name;
             if (license.expiry > 0) text += "\nBerlaku s.d. " + SimpleDateFormat.getDateInstance(SimpleDateFormat.MEDIUM).format(new Date(license.expiry));
             lockBanner.setText(text);
         }
+    }
+
+    /** Expand/collapse the raw config fields. CONNECT stays visible either way. */
+    private void toggleConfigFields() {
+        if (license != null && license.lock) { show("Config terkunci"); return; }
+        if (fieldsExpanded) saveActiveToStore(); // edits made while expanded are kept
+        fieldsExpanded = !fieldsExpanded;
+        configFields.setVisibility(fieldsExpanded ? android.view.View.VISIBLE : android.view.View.GONE);
+        toggleFields.setText(fieldsExpanded ? "Edit config ▲" : "Edit config ▼");
     }
 
     private void loadLicense() {
@@ -402,7 +446,7 @@ public final class MainActivity extends AppCompatActivity {
             .setView(form)
             .create();
         dialog.setOnShowListener(d -> {
-            try { dialog.getWindow().setBackgroundDrawableResource(android.graphics.Color.parseColor("#1A1A1A")); } catch (Exception ignored) {}
+            try { dialog.getWindow().setBackgroundDrawableResource(R.color.dialog_background); } catch (Exception ignored) {}
             dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setVisibility(android.view.View.GONE);
             dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEGATIVE).setVisibility(android.view.View.GONE);
             TextView title = dialog.findViewById(androidx.appcompat.R.id.alertTitle);
@@ -440,44 +484,13 @@ public final class MainActivity extends AppCompatActivity {
         if (LicenseCodec.isEncoded(value)) { importLicense(value); return; }
         boolean hadLicense = license != null;
         try {
-            VlessConfig config = VlessParser.parse(value);
-            if (hadLicense) { prefs.edit().remove("license_payload").apply(); license = null; }
-            // save as a NEW profile, then ask its name (NekoBox/V2RayNG style)
-            ProfileStore.Profile np = new ProfileStore.Profile(ProfileStore.newId(),
-                "Profile " + (profileStore.count() + 1),
-                config.address + ":" + config.port, config.uuid, config.path, config.sni, config.host);
-            profileStore.put(np);
-            activeProfileId = np.id;
-            profileStore.setActiveId(np.id);
-            loadFieldsFrom(np);
-            askProfileNameAndSwitch(np.id);
-            applyLockState();
+            VlessParser.parse(value); // validate first
+            if (hadLicense) { prefs.edit().remove("license_payload").apply(); license = null; applyLockState(); }
+            // open editor prefilled (NekoBox style): user reviews + names + saves
+            android.content.Intent it = new android.content.Intent(this, ProfileEditActivity.class);
+            it.putExtra(ProfileEditActivity.EXTRA_RAW_URI, value);
+            startActivityForResult(it, 77);
         } catch (Exception error) { show(error.getMessage()); }
-    }
-
-    /** Prompt for profile name after import; BATAL = keep default name. */
-    private void askProfileNameAndSwitch(final String profileId) {
-        ProfileStore.Profile p = profileStore.get(profileId);
-        android.view.View form = getLayoutInflater().inflate(R.layout.dialog_profile_edit, null);
-        final android.widget.EditText nameF = form.findViewById(R.id.prof_name);
-        if (p != null) nameF.setText(p.name);
-        androidx.appcompat.app.AlertDialog dialog = new androidx.appcompat.app.AlertDialog.Builder(this)
-            .setView(form)
-            .create();
-        dialog.setOnShowListener(d -> {
-            try { dialog.getWindow().setBackgroundDrawableResource(android.graphics.Color.parseColor("#1A1A1A")); } catch (Exception ignored) {}
-        });
-        form.findViewById(R.id.prof_cancel).setOnClickListener(x -> dialog.dismiss());
-        form.findViewById(R.id.prof_save).setOnClickListener(x -> {
-            String nm = nameF.getText().toString().trim();
-            ProfileStore.Profile cur = profileStore.get(profileId);
-            if (cur != null) profileStore.put(new ProfileStore.Profile(cur.id,
-                nm.isEmpty() ? cur.name : nm, cur.address, cur.uuid, cur.path, cur.sni, cur.host));
-            renderProfileTabs();
-            dialog.dismiss();
-            show("Profil tersimpan");
-        });
-        dialog.show();
     }
 
     private void importLicense(String payload) {
@@ -502,18 +515,40 @@ public final class MainActivity extends AppCompatActivity {
         if (request == IMPORT_FILE && result == RESULT_OK && data != null && data.getData() != null) readImport(data.getData());
         if (request == EXPORT_FILE && result == RESULT_OK && data != null && data.getData() != null) writeExport(data.getData());
         if (request == EXPORT_LICENSE && result == RESULT_OK && data != null && data.getData() != null) writeLicense(data.getData());
+        if (request == 77 && result == RESULT_OK) {
+            ProfileStore.Profile a = profileStore.active();
+            activeProfileId = a == null ? null : a.id;
+            if (a != null) loadFieldsFrom(a);
+            renderProfileTabs();
+            renderProfileList();
+        }
     }
 
     private void connect(String uri) { save(); VpnService.start(this, uri); }
     private void disconnect() { VpnService.stop(this); }
     private void onVpnState(String value) {
+        if (value == null) value = "Disconnected";
         status.setText(value);
-        connected = "Connected".equals(value) || "Connecting…".equals(value) || "Checking internet…".equals(value) || "Reconnecting…".equals(value);
+        // status may carry extra lines (HTTP ping log) — compare by prefix, not equality
+        boolean busy = value.startsWith("Connecting") || value.startsWith("Checking internet");
+        connected = value.startsWith("Connected") || busy || value.startsWith("Reconnecting");
         connect.setText(connected ? "DISCONNECT" : "CONNECT");
         connect.setBackgroundTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor(connected ? "#E53935" : "#4CAF50")));
-        connect.setEnabled(!"Connecting…".equals(value) && !"Checking internet…".equals(value));
-        if ("Disconnected".equals(value)) { totalRx = 0; totalTx = 0; hasBaseline = false; if (showTraffic) traffic.setText("↓ 0 B   ↑ 0 B"); }
-        else if (!connected) resetTraffic();
+        connect.setEnabled(!busy);
+        // The service re-emits the same state string on every HTTP ping line (~3 s apart). Resetting the
+        // meter on each of those cleared the rate baseline before two samples could ever be compared, so
+        // the speed read "0 B/s" forever and the text flickered between two different formats. Only a
+        // genuine transition into Connected should reset it.
+        boolean nowConnected = value.startsWith("Connected");
+        boolean enteredConnected = nowConnected && !stateWasConnected;
+        stateWasConnected = nowConnected;
+        if (!connected) {
+            // also covers failure reasons (no network, TLS, WebSocket): meter goes back to zero
+            totalRx = 0; totalTx = 0; hasBaseline = false;
+            if (showTraffic) traffic.setText("↓ 0 B   ↑ 0 B");
+        } else if (enteredConnected) {
+            resetTraffic();
+        }
     }
 
     private final Runnable trafficTask = new Runnable() {
@@ -523,34 +558,49 @@ public final class MainActivity extends AppCompatActivity {
         }
     };
 
+    /**
+     * Sole writer of the meter text, so the format can never alternate between repaints (it used to
+     * flip between "↓ X ↑ Y" and "↓ X (0 B/s) ↑ Y (0 B/s)", which read as the meter glitching).
+     */
+    private void renderTraffic(long downRate, long upRate) {
+        if (!showTraffic) return;
+        traffic.setText("↓ " + bytes(totalRx) + " (" + bytes(downRate) + "/s)   ↑ " + bytes(totalTx) + " (" + bytes(upRate) + "/s)");
+    }
+
     private void updateTraffic() {
         SharedPreferences vpnStatus = getSharedPreferences("vpn_status", MODE_PRIVATE);
-        totalRx = vpnStatus.getLong("session_rx", 0);
-        totalTx = vpnStatus.getLong("session_tx", 0);
         long now = System.currentTimeMillis();
         long rx = android.net.TrafficStats.getUidRxBytes(uid);
         long tx = android.net.TrafficStats.getUidTxBytes(uid);
         long downRate = 0, upRate = 0;
         if (rx >= 0 && tx >= 0) {
-            if (!hasBaseline) { lastRx = rx; lastTx = tx; lastSample = now; hasBaseline = true; }
-            long dRx = rx - lastRx, dTx = tx - lastTx;
-            if (dRx >= 0 && dTx >= 0) {
-                long elapsed = Math.max(1, now - lastSample);
-                downRate = dRx * 1000 / elapsed; upRate = dTx * 1000 / elapsed;
+            // Derive the session total here rather than waiting for the service's session_rx, which is
+            // only refreshed on probe ticks (30–90 s) and made the counters look frozen in between.
+            long baseRx = vpnStatus.getLong("meter_base_rx", -1);
+            long baseTx = vpnStatus.getLong("meter_base_tx", -1);
+            totalRx = baseRx >= 0 && rx >= baseRx ? rx - baseRx : vpnStatus.getLong("session_rx", 0);
+            totalTx = baseTx >= 0 && tx >= baseTx ? tx - baseTx : vpnStatus.getLong("session_tx", 0);
+            if (!hasBaseline) {
+                lastRx = rx; lastTx = tx; lastSample = now; hasBaseline = true; // first tick: seed only
+            } else {
+                long dRx = rx - lastRx, dTx = tx - lastTx;
+                if (dRx >= 0 && dTx >= 0) {
+                    long elapsed = Math.max(1, now - lastSample);
+                    downRate = dRx * 1000 / elapsed; upRate = dTx * 1000 / elapsed;
+                }
+                lastRx = rx; lastTx = tx; lastSample = now;
             }
-            lastRx = rx; lastTx = tx; lastSample = now;
         }
-        traffic.setText("↓ " + bytes(totalRx) + " (" + bytes(downRate) + "/s)   ↑ " + bytes(totalTx) + " (" + bytes(upRate) + "/s)");
+        renderTraffic(downRate, upRate);
     }
 
     private void resetTraffic() {
-        hasBaseline = false;
+        hasBaseline = false; // next 2 s sample seeds the rate baseline
         SharedPreferences vpnStatus = getSharedPreferences("vpn_status", MODE_PRIVATE);
         totalRx = vpnStatus.getLong("session_rx", 0);
         totalTx = vpnStatus.getLong("session_tx", 0);
-        if (showTraffic) traffic.setText("↓ " + bytes(totalRx) + "   ↑ " + bytes(totalTx));
+        renderTraffic(0, 0);
     }
-    private void saveTotals() { }
     private static String bytes(long value) { return value < 1024 ? value + " B" : value < 1048576 ? String.format("%.1f KB", value / 1024d) : String.format("%.2f MB", value / 1048576d); }
 
     private String exportLink() {
@@ -574,17 +624,7 @@ public final class MainActivity extends AppCompatActivity {
     private void renderProfileTabs() {
         if (profileList == null) profileList = findViewById(R.id.profileList);
         renderProfileList();
-        ProfileStore.Profile a = profileStore.get(activeProfileId);
-        android.widget.TextView chip = findViewById(R.id.activeProfileChip);
-        if (chip != null && a != null) chip.setText("▸ " + (a.name.isEmpty() ? "Untitled" : a.name) + "  •  " + (a.address.isEmpty() ? "-" : a.address));
-    }
-
-    private void toggleListMode() {
-        android.view.View fields = findViewById(R.id.configFields);
-        boolean show = fields.getVisibility() != android.view.View.VISIBLE;
-        fields.setVisibility(show ? android.view.View.VISIBLE : android.view.View.GONE);
-        android.widget.TextView tf = findViewById(R.id.toggleFields);
-        tf.setText(show ? "Edit ▲" : "Edit ▼");
+        // active profile marker shown on the list cards (strip color)
     }
 
     /** RecyclerView adapter for profile cards (NekoBox style). */
@@ -612,7 +652,7 @@ public final class MainActivity extends AppCompatActivity {
                     addr.setText("");
                     edit.setVisibility(android.view.View.GONE);
                     del.setVisibility(android.view.View.GONE);
-                    v.setOnClickListener(x -> addProfile());
+                    v.setOnClickListener(x -> startActivityForResult(new android.content.Intent(x.getContext(), ProfileEditActivity.class), 77));
                     return;
                 }
                 ProfileStore.Profile p = rows.get(pos);
@@ -633,20 +673,9 @@ public final class MainActivity extends AppCompatActivity {
                     show("Profil aktif: " + (p.name.isEmpty() ? "Untitled" : p.name));
                 });
                 edit.setOnClickListener(x -> {
-                    // open profile edit dialog: rename + save (config edited via Edit ▼ form)
-                    saveActiveToStore();
-                    activeProfileId = p.id;
-                    profileStore.setActiveId(p.id);
-                    loadFieldsFrom(p);
-                    renderProfileTabs();
-                    renderProfileList();
-                    editProfileDialog(p);
-                    android.view.View fields = findViewById(R.id.configFields);
-                    fields.setVisibility(android.view.View.VISIBLE);
-                    android.widget.TextView tf = findViewById(R.id.toggleFields);
-                    tf.setText("Edit ▲");
-                    android.widget.ScrollView sv = findViewById(R.id.scrollView);
-                    sv.post(() -> sv.smoothScrollTo(0, fields.getTop()));
+                    android.content.Intent it = new android.content.Intent(profileList.getContext(), ProfileEditActivity.class);
+                    it.putExtra(ProfileEditActivity.EXTRA_PROFILE_ID, p.id);
+                    ((android.app.Activity) v.getContext()).startActivityForResult(it, 77);
                 });
                 del.setOnClickListener(x -> confirmDeleteProfile(p));
             }
@@ -654,30 +683,8 @@ public final class MainActivity extends AppCompatActivity {
         });
     }
 
-    /** Rename a profile via dialog (name only; config fields via Edit ▼ form). */
-    private void editProfileDialog(final ProfileStore.Profile p) {
-        android.view.View form = getLayoutInflater().inflate(R.layout.dialog_profile_edit, null);
-        final android.widget.EditText nameF = form.findViewById(R.id.prof_name);
-        nameF.setText(p.name);
-        androidx.appcompat.app.AlertDialog dialog = new androidx.appcompat.app.AlertDialog.Builder(this)
-            .setView(form)
-            .create();
-        dialog.setOnShowListener(d -> {
-            try { dialog.getWindow().setBackgroundDrawableResource(android.graphics.Color.parseColor("#1A1A1A")); } catch (Exception ignored) {}
-        });
-        form.findViewById(R.id.prof_cancel).setOnClickListener(x -> dialog.dismiss());
-        form.findViewById(R.id.prof_save).setOnClickListener(x -> {
-            String nm = nameF.getText().toString().trim();
-            profileStore.put(new ProfileStore.Profile(p.id, nm.isEmpty() ? p.name : nm, text(address), text(uuid), text(path), text(sni), text(host)));
-            renderProfileTabs();
-            renderProfileList();
-            dialog.dismiss();
-            show("Profil disimpan");
-        });
-        dialog.show();
-    }
-
     private void saveActiveToStore() {
+        if (activeProfileId == null) return; // never write a profile without an id
         profileStore.put(new ProfileStore.Profile(activeProfileId, profileName(activeProfileId),
             text(address), text(uuid), text(path), text(sni), text(host)));
     }
@@ -687,33 +694,36 @@ public final class MainActivity extends AppCompatActivity {
         return p == null ? "" : p.name;
     }
 
-    private void addProfile() {
-        saveActiveToStore();
-        final ProfileStore.Profile p = new ProfileStore.Profile(ProfileStore.newId(), "Profile " + (profileStore.count() + 1), "", "", "/", "", "");
-        if (!profileStore.put(p)) { show("Maksimal 10 profil"); return; }
-        switchProfile(p.id);
-        if (listMode) renderProfileList();
-    }
-
     private void confirmDeleteProfile(final ProfileStore.Profile p) {
         if (profileStore.count() <= 1) { show("Minimal harus ada 1 profil"); return; }
         if (connected) { show("Putuskan VPN dulu sebelum hapus profil"); return; }
+        String name = p.name.isEmpty() ? "Untitled" : p.name;
+        String message = "Hapus profil '" + name + "'?";
+        if (ProfileStore.hasConfig(p) && profileStore.countWithConfig() == 1) {
+            message += "\n\nIni satu-satunya profil yang punya config. Setelah dihapus kamu harus import atau isi config lagi sebelum bisa connect.";
+        }
         new AlertDialog.Builder(this)
             .setTitle("Hapus profil")
-            .setMessage("Hapus profil '" + (p.name.isEmpty() ? "Untitled" : p.name) + "'?")
-            .setPositiveButton("Hapus", (d, w) -> {
-                profileStore.remove(p.id);
-                if (p.id.equals(activeProfileId)) {
-                    ProfileStore.Profile a = profileStore.active();
-                    activeProfileId = a == null ? null : a.id;
-                    if (a != null) loadFieldsFrom(a);
-                }
-                renderProfileTabs();
-                if (listMode) renderProfileList();
-                show("Profil dihapus");
-            })
+            .setMessage(message)
+            .setPositiveButton("Hapus", (d, w) -> deleteProfile(p))
             .setNegativeButton("Batal", null)
             .show();
+    }
+
+    /** Delete a profile without losing unsaved field edits, then follow the store's new active profile. */
+    private void deleteProfile(ProfileStore.Profile p) {
+        boolean wasActive = p.id.equals(activeProfileId);
+        saveActiveToStore(); // field edits not saved yet must survive the delete
+        profileStore.remove(p.id);
+        if (wasActive) {
+            ProfileStore.Profile a = profileStore.active();
+            activeProfileId = a == null ? null : a.id;
+            if (a != null) loadFieldsFrom(a);
+        }
+        renderProfileTabs();
+        show(profileStore.countWithConfig() == 0
+            ? "Profil dihapus — belum ada config, import dulu"
+            : "Profil dihapus");
     }
 
     private void loadFieldsFrom(ProfileStore.Profile p) {
@@ -721,16 +731,6 @@ public final class MainActivity extends AppCompatActivity {
         sni.setText(p.sni); host.setText(p.host);
     }
 
-    private void switchProfile(String id) {
-        saveActiveToStore();
-        activeProfileId = id;
-        profileStore.setActiveId(id);
-        ProfileStore.Profile p = profileStore.get(id);
-        if (p != null) loadFieldsFrom(p);
-        renderProfileTabs();
-        renderProfileList();
-        show("Profil: " + (p == null || p.name.isEmpty() ? "Untitled" : p.name));
-    }
     private void save() {
         prefs.edit().putString("address", text(address)).putString("uuid", text(uuid)).putString("path", text(path)).putString("sni", text(sni)).putString("host", text(host)).apply();
         if (activeProfileId != null) profileStore.put(new ProfileStore.Profile(activeProfileId, profileName(activeProfileId), text(address), text(uuid), text(path), text(sni), text(host)));
@@ -763,5 +763,5 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void show(String value) { Toast.makeText(this, value == null ? "Error" : value, Toast.LENGTH_SHORT).show(); }
-    @Override protected void onDestroy() { VpnService.setListener(null); handler.removeCallbacks(trafficTask); saveTotals(); super.onDestroy(); }
+    @Override protected void onDestroy() { VpnService.setListener(null); handler.removeCallbacks(trafficTask); super.onDestroy(); }
 }

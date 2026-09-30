@@ -4,5 +4,7 @@
 -assumenosideeffects class android.util.Log {
     public static *** d(...);
     public static *** v(...);
-    public static *** i(...);
 }
+# NOTE: Log.i is deliberately NOT stripped — VpnService.Platform#writeLog forwards the whole
+# sing-box core log through it, which is the only way to see outbound/dial/TLS failures via
+# `adb logcat -s libbox` in a release build.

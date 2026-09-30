@@ -85,12 +85,41 @@ public final class ProfileStore {
     public synchronized void remove(String id) {
         List<Profile> list = all();
         List<Profile> kept = new ArrayList<>();
-        for (Profile p : list) if (!p.id.equals(id)) kept.add(p);
-        save(kept);
-        if (id.equals(prefs.getString("active_profile", null))) {
-            String next = kept.isEmpty() ? null : kept.get(0).id;
-            setActiveId(next);
+        int removedAt = -1;
+        for (int i = 0; i < list.size(); i++) {
+            if (list.get(i).id.equals(id)) { if (removedAt < 0) removedAt = i; continue; }
+            kept.add(list.get(i));
         }
+        if (removedAt < 0) return; // nothing matched: leave prefs untouched
+        save(kept);
+        if (id.equals(prefs.getString("active_profile", null))) setActiveId(nextActiveId(kept, removedAt));
+    }
+
+    /**
+     * Pick the next active profile after a removal: nearest surviving neighbour first, but prefer a
+     * neighbour that actually holds a config so the user does not land on an empty profile and lose
+     * the ability to connect.
+     */
+    private static String nextActiveId(List<Profile> kept, int removedAt) {
+        if (kept.isEmpty()) return null;
+        int nearest = Math.max(0, Math.min(removedAt, kept.size() - 1));
+        for (int offset = 0; offset < kept.size(); offset++) {
+            int before = nearest - offset;
+            if (before >= 0 && hasConfig(kept.get(before))) return kept.get(before).id;
+            int after = nearest + offset;
+            if (after < kept.size() && hasConfig(kept.get(after))) return kept.get(after).id;
+        }
+        return kept.get(nearest).id;
+    }
+
+    public static boolean hasConfig(Profile profile) {
+        return profile != null && profile.address != null && !profile.address.trim().isEmpty();
+    }
+
+    public synchronized int countWithConfig() {
+        int total = 0;
+        for (Profile profile : all()) if (hasConfig(profile)) total++;
+        return total;
     }
 
     public void setActiveId(String id) { prefs.edit().putString("active_profile", id).apply(); }

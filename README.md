@@ -29,6 +29,13 @@ JPS Tunnel is a Java-only Android VPN client built on `VpnService` and a local `
 - Stable routing via `override_android_vpn` — Android `protect(fd)`, no interface guessing, works on both Qualcomm and MediaTek
 - Honest status flow: Connecting → Checking internet → Connected, only after a real HTTP 204 through the tunnel; failures show a safe reason (no network, DNS, TLS, WebSocket)
 
+### Profiles
+
+- Up to 10 profiles in one list; tap a card to make it active — the active one is marked with a green strip and a cyan name
+- Every card carries its own edit (full-screen editor: name, address, UUID, path, SNI, Host) and delete action
+- The main screen stays list-first: the raw config fields are collapsed behind "Edit config ▼", while CONNECT, the traffic meter, and the status box sit outside the scroll area and are always reachable
+- Deleting a profile keeps unsaved field edits, warns before the last remaining config is removed, and hands the active marker to the nearest profile that still has a config
+
 ### 24/7 resilience
 
 - Persistent foreground service with `START_STICKY` and saved URI auto-reconnect
@@ -53,7 +60,7 @@ JPS Tunnel is a Java-only Android VPN client built on `VpnService` and a local `
 
 - Session traffic meter: counts from zero on every connect, resets on disconnect, survives app close, toggleable in the menu
 - No wake locks; adaptive probing; log level `warn`; traffic sampling pauses in background
-- Measured: ~66 MB RSS, ~0.5% idle CPU, release APK ~23 MB
+- Measured: ~66 MB PSS with the `system` TUN stack (~106 MB with the `gvisor` stack that ships), ~0.5% idle CPU, release APK ~23 MB
 
 > [!NOTE]
 > Scope is intentionally narrow: no QUIC, hotspot sharing, backup servers, rules, failover, or wake locks. `allowInsecure=true` is the default to support compatible Cloudflare Worker bug-domain profiles.
@@ -90,7 +97,8 @@ CI (GitHub Actions) builds the release APK on every push to `main` and publishes
 
 ## TUN stack note
 
-The TUN inbound uses the `system` stack instead of sing-box's default `gvisor`, measured on a MediaTek device (vivo 1802, LTE):
+The TUN inbound ships with sing-box's default `gvisor` stack. The lighter `system` stack was measured
+on a MediaTek device (vivo 1802, LTE) and used for a while:
 
 | metric | gvisor | system |
 |---|---|---|
@@ -98,7 +106,10 @@ The TUN inbound uses the `system` stack instead of sing-box's default `gvisor`, 
 | HTTP 204 via tunnel | ~0.4–0.9 s | ~0.4–0.5 s |
 | stress + screen-off recovery | ok | ok |
 
-Both stacks passed connect, browse, stress, and 30 s screen-off recovery. If any "some pages won't load" report appears, revert by removing `"stack": "system"` in `SingboxConfig.java`.
+Both stacks passed connect, browse, stress, and 30 s screen-off recovery, but `system` was reverted in
+favour of `gvisor` for cross-device stability (`f9e5458`, `b896e36`) — the memory saving was not worth
+the instability. To re-test it, change `"stack"` in `SingboxConfig.java` and verify on more than one
+chipset before shipping.
 
 ## Licensing notes
 

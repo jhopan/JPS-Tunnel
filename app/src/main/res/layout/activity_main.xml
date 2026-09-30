@@ -22,38 +22,7 @@
         android:background="#121212"
         android:paddingVertical="8dp" />
 
-    <LinearLayout
-        android:id="@+id/editConfigBar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:background="#161616"
-        android:gravity="center_vertical"
-        android:paddingHorizontal="12dp"
-        android:paddingVertical="6dp">
-
-        <TextView
-            android:id="@+id/activeProfileChip"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:textSize="13sp"
-            android:textColor="#00E5FF"
-            android:textStyle="bold"
-            android:maxLines="1"
-            android:ellipsize="end" />
-
-        <TextView
-            android:id="@+id/toggleFields"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:padding="8dp"
-            android:text="Edit ▼"
-            android:textSize="12sp"
-            android:textColor="#4CAF50"
-            android:background="?attr/selectableItemBackground" />
-    </LinearLayout>
-
+    <!-- Config fields live here: collapsed by default (see toggleFields), hidden while locked. -->
     <ScrollView
         android:id="@+id/scrollView"
         android:layout_width="match_parent"
@@ -66,7 +35,8 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:paddingHorizontal="20dp"
-            android:paddingVertical="14dp">
+            android:paddingTop="8dp"
+            android:paddingBottom="4dp">
 
             <TextView
                 android:id="@+id/lockBanner"
@@ -83,7 +53,8 @@
                 android:id="@+id/configFields"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical">
+                android:orientation="vertical"
+                android:visibility="gone">
 
             <TextView
                 android:layout_width="match_parent"
@@ -195,51 +166,74 @@
                 android:singleLine="true" />
 
             </LinearLayout>
-
-            <Button
-                android:id="@+id/connect"
-                android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:layout_marginTop="18dp"
-                android:text="CONNECT"
-                android:backgroundTint="#4CAF50"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/traffic"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:gravity="center"
-                android:fontFamily="monospace"
-                android:textSize="13sp"
-                android:textColor="#2196F3"
-                android:text="Traffic: -" />
-
-            <TextView
-                android:id="@+id/status"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="88dp"
-                android:layout_marginTop="12dp"
-                android:layout_marginBottom="12dp"
-                android:padding="12dp"
-                android:background="#1A1A1A"
-                android:fontFamily="monospace"
-                android:textSize="12sp"
-                android:textColor="#4CAF50"
-                android:lineSpacingExtra="3dp"
-                android:text="Disconnected" />
-
-            <TextView
-                android:id="@+id/version"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center"
-                android:layout_marginBottom="8dp"
-                android:textSize="11sp"
-                android:textColor="#666666" />
         </LinearLayout>
     </ScrollView>
+
+    <TextView
+        android:id="@+id/toggleFields"
+        android:layout_width="match_parent"
+        android:layout_height="34dp"
+        android:gravity="end|center_vertical"
+        android:paddingHorizontal="16dp"
+        android:text="Edit config ▼"
+        android:textSize="12sp"
+        android:textColor="#4CAF50"
+        android:background="?attr/selectableItemBackground" />
+
+    <!-- Connect controls stay outside the ScrollView so they can never be clipped or scrolled away. -->
+    <LinearLayout
+        android:id="@+id/connectPanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="20dp"
+        android:paddingBottom="10dp">
+
+        <Button
+            android:id="@+id/connect"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="6dp"
+            android:text="CONNECT"
+            android:backgroundTint="#4CAF50"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/traffic"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center"
+            android:fontFamily="monospace"
+            android:textSize="13sp"
+            android:textColor="#2196F3"
+            android:text="Traffic: -" />
+
+        <TextView
+            android:id="@+id/status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="88dp"
+            android:maxHeight="200dp"
+            android:scrollbars="vertical"
+            android:layout_marginTop="10dp"
+            android:layout_marginBottom="10dp"
+            android:padding="12dp"
+            android:background="#1A1A1A"
+            android:fontFamily="monospace"
+            android:textSize="12sp"
+            android:textColor="#4CAF50"
+            android:lineSpacingExtra="3dp"
+            android:text="Disconnected" />
+
+        <TextView
+            android:id="@+id/version"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:layout_marginBottom="4dp"
+            android:textSize="11sp"
+            android:textColor="#666666" />
+    </LinearLayout>
 </LinearLayout>
