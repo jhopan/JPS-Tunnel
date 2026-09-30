@@ -164,7 +164,7 @@ public final class VpnService extends android.net.VpnService {
         }
         ConnectivityManager manager = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
         NetworkCapabilities caps = manager.getNetworkCapabilities(manager.getActiveNetwork());
-        if (caps == null || !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) { fail("No network: turn on Wi-Fi or mobile data"); return START_NOT_STICKY; }
+        if (caps == null || !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) { fail("GAGAL: tidak ada jaringan — nyalakan Wi-Fi atau data seluler."); return START_NOT_STICKY; }
         String uri = intent == null ? statusPrefs().getString(KEY_URI, null) : intent.getStringExtra(EXTRA_URI);
         if (uri == null) { setState("Disconnected"); stopSelf(); return START_NOT_STICKY; }
         synchronized (lifecycleLock) {
@@ -563,7 +563,7 @@ public final class VpnService extends android.net.VpnService {
             reconnectTunnel();
         } else {
             logStep("Gagal setelah " + PROBE_FAIL_LIMIT + "× probe berturut-turut");
-            fail("GAGAL: Tidak bisa connect setelah beberapa percobaan.\nPenyebab: server tidak merespons atau config salah.\nSolusi: cek server hidup, pastikan address/UUID/path/SNI/Host benar. SS pesan ini kirim ke admin.");
+            fail("GAGAL: server tidak merespons setelah 3x percobaan. Cek: server hidup? address/UUID/path/SNI benar?");
         }
     }
 
@@ -581,13 +581,13 @@ public final class VpnService extends android.net.VpnService {
             return explainHttp(code);
         } catch (SocketTimeoutException error) {
             logStep("Probe timeout setelah " + PROBE_TIMEOUT_MS + " ms");
-            return "GAGAL: Internet check timeout.\nPenyebab: tunnel tidak merespons (WS zombie).\nSolusi: tunggu auto-reconnect atau ganti profil.";
+            return "GAGAL: Timeout — tunnel tidak merespons (mungkin zombie).";
         } catch (java.net.ConnectException error) {
             logStep("Proxy 127.0.0.1:" + SingboxConfig.PROXY_PORT + " belum siap");
-            return "GAGAL: VPN proxy belum siap.\nPenyebab: sing-box belum selesai start.\nSolusi: tunggu sebentar atau restart app.";
+            return "GAGAL: Proxy belum siap — sing-box masih starting.";
         } catch (Exception error) {
             logStep("Probe error: " + error.getClass().getSimpleName());
-            return "GAGAL: Internet check gagal.\nPenyebab: tunnel bermasalah.\nSolusi: coba reconnect atau ganti profil.";
+            return "GAGAL: Internet check gagal — tunnel bermasalah.";
         } finally {
             if (connection != null) connection.disconnect();
         }
@@ -615,14 +615,14 @@ public final class VpnService extends android.net.VpnService {
     }
 
     private static String connectionFailure(Exception error) {
-        if (error instanceof java.net.UnknownHostException) return "GAGAL: DNS tidak bisa resolve server.\nPenyebab: domain server salah atau DNS mati.\nSolusi: cek address, pastikan domain benar.";
+        if (error instanceof java.net.UnknownHostException) return "GAGAL: DNS gagal — domain server salah atau DNS mati.";
         String text = String.valueOf(error.getMessage()).toLowerCase();
-        if (text.contains("tls") || text.contains("certificate")) return "GAGAL: TLS handshake gagal.\nPenyebab: SNI salah atau sertifikat tidak cocok.\nSolusi: cek SNI, pastikan allowInsecure=true.";
-        if (text.contains("websocket") || text.contains("ws ")) return "GAGAL: WebSocket gagal.\nPenyebab: path atau Host header salah.\nSolusi: cek path dan Host di profil.";
-        if (text.contains("refused") || text.contains("connection refused")) return "GAGAL: Server menolak koneksi.\nPenyebab: server down atau port tertutup.\nSolusi: cek server hidup, port 443 terbuka.";
-        if (text.contains("timeout") || text.contains("timed out")) return "GAGAL: Koneksi timeout.\nPenyebab: server tidak merespons atau jaringan lambat.\nSolusi: cek koneksi internet, coba lagi.";
-        if (text.contains("reset") || text.contains("broken pipe")) return "GAGAL: Koneksi diputus server.\nPenyebab: server/CDN menutup koneksi paksa.\nSolusi: coba profil lain atau tunggu sebentar.";
-        return "GAGAL: " + error.getClass().getSimpleName() + ": " + error.getMessage() + "\nPenyebab: cek server, port, path, SNI, dan Host.\nSolusi: pastikan semua field terisi benar. SS kirim ke admin.";
+        if (text.contains("tls") || text.contains("certificate")) return "GAGAL: TLS gagal — SNI salah atau sertifikat tidak cocok.";
+        if (text.contains("websocket") || text.contains("ws ")) return "GAGAL: WebSocket gagal — path atau Host header salah.";
+        if (text.contains("refused") || text.contains("connection refused")) return "GAGAL: Connection refused — server down atau port tertutup.";
+        if (text.contains("timeout") || text.contains("timed out")) return "GAGAL: Timeout — server tidak merespons atau jaringan lambat.";
+        if (text.contains("reset") || text.contains("broken pipe")) return "GAGAL: Connection reset — server/CDN menutup koneksi paksa.";
+        return "GAGAL: " + error.getClass().getSimpleName() + " — cek server, port, path, SNI, Host.";
     }
 
     private void reconnectTunnel() {
@@ -646,20 +646,20 @@ public final class VpnService extends android.net.VpnService {
     /** Translate HTTP status codes to user-friendly diagnosis. */
     private static String explainHttp(int code) {
         switch (code) {
-            case 400: return "GAGAL: HTTP 400 Bad Request.\nPenyebab: format request salah.\nSolusi: cek path dan Host.";
-            case 401: return "GAGAL: HTTP 401 Unauthorized.\nPenyebab: UUID salah atau tidak dikenali server.\nSolusi: cek UUID di profil.";
-            case 403: return "GAGAL: HTTP 403 Forbidden.\nPenyebab: Cloudflare/CDN blok akses.\nSolusi: coba SNI/Host lain, atau ganti profil.";
-            case 404: return "GAGAL: HTTP 404 Not Found.\nPenyebab: path salah, server tidak kenali endpoint.\nSolusi: cek path (mis. /vless).";
-            case 408: return "GAGAL: HTTP 408 Timeout.\nPenyebab: server lambat merespons.\nSolusi: tunggu atau coba profil lain.";
-            case 429: return "GAGAL: HTTP 429 Too Many Requests.\nPenyebab: rate limit dari Cloudflare/CDN.\nSolusi: tunggu beberapa menit atau ganti profil.";
-            case 500: return "GAGAL: HTTP 500 Server Error.\nPenyebab: Xray/server crash.\nSolusi: server bermasalah, hubungi admin.";
-            case 502: return "GAGAL: HTTP 502 Bad Gateway.\nPenyebab: Xray di belakang proxy mati.\nSolusi: server bermasalah, hubungi admin.";
-            case 503: return "GAGAL: HTTP 503 Service Unavailable.\nPenyebab: server overload/maintenance.\nSolusi: tunggu server stabil.";
-            case 504: return "GAGAL: HTTP 504 Gateway Timeout.\nPenyebab: gateway tidak dapat balas dari Xray.\nSolusi: server bermasalah, hubungi admin.";
+            case 400: return "GAGAL: HTTP 400 — format request salah, cek path/Host.";
+            case 401: return "GAGAL: HTTP 401 — UUID salah, server tidak kenali.";
+            case 403: return "GAGAL: HTTP 403 — Cloudflare/CDN blok akses.";
+            case 404: return "GAGAL: HTTP 404 — path salah, server tidak kenali endpoint.";
+            case 408: return "GAGAL: HTTP 408 — server lambat merespons.";
+            case 429: return "GAGAL: HTTP 429 — rate limit, tunggu beberapa menit.";
+            case 500: return "GAGAL: HTTP 500 — Xray/server crash.";
+            case 502: return "GAGAL: HTTP 502 — Xray di belakang proxy mati.";
+            case 503: return "GAGAL: HTTP 503 — server overload/maintenance.";
+            case 504: return "GAGAL: HTTP 504 — gateway timeout, Xray tidak merespons.";
             default:
-                if (code >= 500) return "GAGAL: HTTP " + code + " (server error).\nPenyebab: server bermasalah.\nSolusi: hubungi admin.";
-                if (code >= 400) return "GAGAL: HTTP " + code + " (client error).\nPenyebab: config salah.\nSolusi: cek profil.";
-                return "GAGAL: HTTP " + code + ".\nSolusi: coba reconnect.";
+                if (code >= 500) return "GAGAL: HTTP " + code + " — server error.";
+                if (code >= 400) return "GAGAL: HTTP " + code + " — config salah, cek profil.";
+                return "GAGAL: HTTP " + code + " — coba reconnect.";
         }
     }
 
