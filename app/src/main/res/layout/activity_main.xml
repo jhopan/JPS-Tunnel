@@ -27,24 +27,26 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
+        android:gravity="center_horizontal"
         android:paddingHorizontal="20dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="12dp">
+        android:paddingTop="16dp"
+        android:paddingBottom="16dp">
 
         <Button
             android:id="@+id/connect"
             android:layout_width="match_parent"
-            android:layout_height="52dp"
+            android:layout_height="56dp"
             android:text="CONNECT"
             android:backgroundTint="#4CAF50"
             android:textColor="#FFFFFF"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            android:textSize="16sp" />
 
         <TextView
             android:id="@+id/traffic"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="10dp"
             android:gravity="center"
             android:fontFamily="monospace"
             android:textSize="13sp"
@@ -58,7 +60,7 @@
             android:minHeight="88dp"
             android:maxHeight="200dp"
             android:scrollbars="vertical"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="10dp"
             android:padding="12dp"
             android:background="#1A1A1A"
             android:fontFamily="monospace"
@@ -69,10 +71,10 @@
 
         <TextView
             android:id="@+id/version"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:gravity="center"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="6dp"
             android:textSize="11sp"
             android:textColor="#666666" />
     </LinearLayout>
