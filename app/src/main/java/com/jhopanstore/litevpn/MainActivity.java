@@ -83,19 +83,22 @@ public final class MainActivity extends AppCompatActivity {
         profileList = findViewById(R.id.profileList);
         profileList.setLayoutManager(new LinearLayoutManager(this));
         profileList.setHasFixedSize(true);
-        // Force list to fill space between toolbar and connect panel
-        profileList.post(() -> {
-            int screenH = getResources().getDisplayMetrics().heightPixels;
-            int toolbarH = (int) (56 * getResources().getDisplayMetrics().density); // ?attr/actionBarSize ≈ 56dp
-            android.view.View panel = findViewById(R.id.connectPanel);
-            int panelH = panel == null ? 0 : panel.getHeight();
-            int listH = screenH - toolbarH - panelH;
-            if (listH > 0) {
-                android.view.ViewGroup.LayoutParams lp = profileList.getLayoutParams();
+        // Force list to fill space: set height after layout pass
+        final android.view.View toolbar = findViewById(R.id.toolbar);
+        final android.view.View panel = findViewById(R.id.connectPanel);
+        final Runnable resizeList = () -> {
+            int total = findViewById(android.R.id.content).getHeight();
+            int tH = toolbar == null ? 0 : toolbar.getHeight();
+            int pH = panel == null ? 0 : panel.getHeight();
+            int listH = total - tH - pH;
+            if (listH > 100) {
+                android.widget.RelativeLayout.LayoutParams lp = (android.widget.RelativeLayout.LayoutParams) profileList.getLayoutParams();
                 lp.height = listH;
                 profileList.setLayoutParams(lp);
             }
-        });
+        };
+        findViewById(android.R.id.content).post(resizeList);
+        panel.post(resizeList);
         TextView version = findViewById(R.id.version);
         try { version.setText("v" + getPackageManager().getPackageInfo(getPackageName(), 0).versionName + " • by JhopanStore"); }
         catch (Exception ignored) { version.setVisibility(android.view.View.GONE); }
