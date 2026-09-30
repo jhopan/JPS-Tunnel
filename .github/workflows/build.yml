@@ -39,12 +39,17 @@ jobs:
       - name: Versioned release (tag push)
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
+          set -euo pipefail
           ./gradlew assembleRelease --no-daemon
           VER="${GITHUB_REF#refs/tags/}"
-          cp app/build/outputs/apk/release/app-release.apk "JPS-Tunnel-${VER}.apk"
-          gh release create "$VER" "JPS-Tunnel-${VER}.apk" \
+          OUT="app/build/outputs/apk/release"
+          cp "$OUT/app-armeabi-v7a-release.apk" "JPS-Tunnel-${VER}-v7.apk"
+          cp "$OUT/app-arm64-v8a-release.apk" "JPS-Tunnel-${VER}-v8.apk"
+          cp "$OUT/app-universal-release.apk" "JPS-Tunnel-${VER}-universal.apk"
+          sha256sum JPS-Tunnel-"${VER}"-*.apk > SHA256SUMS.txt
+          gh release create "$VER" JPS-Tunnel-"${VER}"-*.apk SHA256SUMS.txt \
             --title "JPS Tunnel ${VER}" \
-            --notes "Release ${VER}. APK release (debug-signed)." \
+            --notes "Release-signed APKs: v7, v8, and universal. SHA256SUMS.txt verifies every download." \
             --latest
         env:
           GH_TOKEN: ${{ github.token }}
@@ -52,13 +57,16 @@ jobs:
       - name: Rolling latest (branch push)
         if: github.ref == 'refs/heads/main'
         run: |
+          set -euo pipefail
           ./gradlew assembleRelease --no-daemon
-          cp app/build/outputs/apk/release/app-release.apk JPS-Tunnel.apk
+          OUT="app/build/outputs/apk/release"
+          cp "$OUT/app-arm64-v8a-release.apk" JPS-Tunnel.apk
+          sha256sum JPS-Tunnel.apk > SHA256SUMS.txt
           gh release delete latest --yes 2>/dev/null || true
           git push origin :refs/tags/latest 2>/dev/null || true
-          gh release create latest JPS-Tunnel.apk \
-            --title "JPS Tunnel (latest)" \
-            --notes "Build otomatis dari commit ${{ github.sha }}. Ini APK release (debug-signed)." \
+          gh release create latest JPS-Tunnel.apk SHA256SUMS.txt \
+            --title "JPS Tunnel (latest v8)" \
+            --notes "Build otomatis dari commit ${{ github.sha }}. APK release-signed arm64-v8a." \
             --latest
         env:
           GH_TOKEN: ${{ github.token }}

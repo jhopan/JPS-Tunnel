@@ -8,17 +8,30 @@ android {
         applicationId 'com.jps.tunnel'
         minSdk 24
         targetSdk 35
-        versionCode 6
-        versionName '1.4.0'
+        versionCode 7
+        versionName '1.4.1'
         ndk { abiFilters 'armeabi-v7a', 'arm64-v8a' }
     }
 
     signingConfigs {
         release {
-            storeFile file('../../jps-tunnel.jks')
+            storeFile rootProject.file('jps-tunnel.jks')
             storePassword 'jhopanstore'
             keyAlias 'jps-tunnel'
             keyPassword 'jhopanstore'
+        }
+    }
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'armeabi-v7a', 'arm64-v8a'
+            universalApk true
+        }
+    }
+    packaging {
+        jniLibs {
+            useLegacyPackaging true
         }
     }
     buildTypes {
