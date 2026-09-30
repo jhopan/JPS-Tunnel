@@ -18,14 +18,11 @@
         android:id="@+id/profileList"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="5"
+        android:layout_weight="1"
+        android:minHeight="400dp"
         android:background="#121212"
-        android:paddingVertical="8dp" />
-
-    <Space
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="0.5" />
+        android:paddingVertical="8dp"
+        android:nestedScrollingEnabled="false" />
 
     <LinearLayout
         android:id="@+id/connectPanel"
@@ -82,11 +79,6 @@
             android:textSize="11sp"
             android:textColor="#666666" />
     </LinearLayout>
-
-    <Space
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="0.5" />
 
     <!-- Hidden: config fields still referenced by Java but not visible. Edit via ProfileEditActivity. -->
     <LinearLayout
