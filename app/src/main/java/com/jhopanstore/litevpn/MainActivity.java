@@ -52,7 +52,6 @@ public final class MainActivity extends AppCompatActivity {
     private String hwid;
     private android.view.View configFields;
     private android.widget.TextView lockBanner;
-    private android.widget.TextView toggleFields;
     private boolean fieldsExpanded;
     private License license;
     private ProfileStore profileStore;
@@ -80,7 +79,6 @@ public final class MainActivity extends AppCompatActivity {
         // status box is height-capped, so make it scrollable: in debug mode the log can exceed the cap
         status.setMovementMethod(new android.text.method.ScrollingMovementMethod());
         configFields = findViewById(R.id.configFields); lockBanner = findViewById(R.id.lockBanner);
-        toggleFields = findViewById(R.id.toggleFields);
         profileList = findViewById(R.id.profileList);
         profileList.setLayoutManager(new LinearLayoutManager(this));
         TextView version = findViewById(R.id.version);
@@ -100,7 +98,6 @@ public final class MainActivity extends AppCompatActivity {
         showTraffic = prefs.getBoolean("show_traffic", true);
         traffic.setVisibility(showTraffic ? android.view.View.VISIBLE : android.view.View.GONE);
         connect.setOnClickListener(v -> { if (connected) disconnect(); else requestConnect(); });
-        toggleFields.setOnClickListener(v -> toggleConfigFields());
 
         VpnService.setListener(value -> runOnUiThread(() -> onVpnState(value)));
         requestNotificationPermission();
@@ -405,8 +402,6 @@ public final class MainActivity extends AppCompatActivity {
         boolean locked = license != null && license.lock;
         if (locked) fieldsExpanded = false; // locked license never shows the raw config
         configFields.setVisibility(fieldsExpanded ? android.view.View.VISIBLE : android.view.View.GONE);
-        toggleFields.setVisibility(locked ? android.view.View.GONE : android.view.View.VISIBLE);
-        toggleFields.setText(fieldsExpanded ? "Edit config ▲" : "Edit config ▼");
         lockBanner.setVisibility(locked ? android.view.View.VISIBLE : android.view.View.GONE);
         if (locked) {
             String text = license.name.isEmpty() ? "JPS Tunnel" : license.name;
@@ -421,7 +416,6 @@ public final class MainActivity extends AppCompatActivity {
         if (fieldsExpanded) saveActiveToStore(); // edits made while expanded are kept
         fieldsExpanded = !fieldsExpanded;
         configFields.setVisibility(fieldsExpanded ? android.view.View.VISIBLE : android.view.View.GONE);
-        toggleFields.setText(fieldsExpanded ? "Edit config ▲" : "Edit config ▼");
     }
 
     private void loadLicense() {

@@ -22,178 +22,19 @@
         android:background="#121212"
         android:paddingVertical="8dp" />
 
-    <!-- Config fields live here: collapsed by default (see toggleFields), hidden while locked. -->
-    <ScrollView
-        android:id="@+id/scrollView"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="#121212"
-        android:fillViewport="true">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:paddingHorizontal="20dp"
-            android:paddingTop="8dp"
-            android:paddingBottom="4dp">
-
-            <TextView
-                android:id="@+id/lockBanner"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:gravity="center"
-                android:textStyle="bold"
-                android:textSize="18sp"
-                android:textColor="#FFFFFF"
-                android:visibility="gone" />
-
-            <LinearLayout
-                android:id="@+id/configFields"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:visibility="gone">
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Address / Target Server"
-                android:textStyle="bold"
-                android:textSize="13sp"
-                android:textColor="#FFFFFF" />
-            <EditText
-                android:id="@+id/address"
-                android:layout_width="match_parent"
-                android:layout_height="44dp"
-                android:layout_marginTop="4dp"
-                android:hint="example.com:443"
-                android:inputType="textUri"
-                android:textColorHint="#888888"
-                android:textColor="#FFFFFF"
-                android:background="#222222"
-                android:paddingHorizontal="10dp"
-                android:textSize="14sp"
-                android:singleLine="true" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:text="UUID"
-                android:textStyle="bold"
-                android:textSize="13sp"
-                android:textColor="#FFFFFF" />
-            <EditText
-                android:id="@+id/uuid"
-                android:layout_width="match_parent"
-                android:layout_height="44dp"
-                android:layout_marginTop="4dp"
-                android:hint="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                android:inputType="textNoSuggestions"
-                android:textColorHint="#888888"
-                android:textColor="#FFFFFF"
-                android:background="#222222"
-                android:paddingHorizontal="10dp"
-                android:textSize="14sp"
-                android:singleLine="true" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:text="Path"
-                android:textStyle="bold"
-                android:textSize="13sp"
-                android:textColor="#FFFFFF" />
-            <EditText
-                android:id="@+id/path"
-                android:layout_width="match_parent"
-                android:layout_height="44dp"
-                android:layout_marginTop="4dp"
-                android:hint="/vless"
-                android:inputType="textUri"
-                android:textColorHint="#888888"
-                android:textColor="#FFFFFF"
-                android:background="#222222"
-                android:paddingHorizontal="10dp"
-                android:textSize="14sp"
-                android:singleLine="true" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:text="SNI (Server Name Indication)"
-                android:textStyle="bold"
-                android:textSize="13sp"
-                android:textColor="#FFFFFF" />
-            <EditText
-                android:id="@+id/sni"
-                android:layout_width="match_parent"
-                android:layout_height="44dp"
-                android:layout_marginTop="4dp"
-                android:hint="example.com"
-                android:inputType="textUri"
-                android:textColorHint="#888888"
-                android:textColor="#FFFFFF"
-                android:background="#222222"
-                android:paddingHorizontal="10dp"
-                android:textSize="14sp"
-                android:singleLine="true" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:text="Header Host"
-                android:textStyle="bold"
-                android:textSize="13sp"
-                android:textColor="#FFFFFF" />
-            <EditText
-                android:id="@+id/host"
-                android:layout_width="match_parent"
-                android:layout_height="44dp"
-                android:layout_marginTop="4dp"
-                android:hint="example.com"
-                android:inputType="textUri"
-                android:textColorHint="#888888"
-                android:textColor="#FFFFFF"
-                android:background="#222222"
-                android:paddingHorizontal="10dp"
-                android:textSize="14sp"
-                android:singleLine="true" />
-
-            </LinearLayout>
-        </LinearLayout>
-    </ScrollView>
-
-    <TextView
-        android:id="@+id/toggleFields"
-        android:layout_width="match_parent"
-        android:layout_height="34dp"
-        android:gravity="end|center_vertical"
-        android:paddingHorizontal="16dp"
-        android:text="Edit config ▼"
-        android:textSize="12sp"
-        android:textColor="#4CAF50"
-        android:background="?attr/selectableItemBackground" />
-
-    <!-- Connect controls stay outside the ScrollView so they can never be clipped or scrolled away. -->
     <LinearLayout
         android:id="@+id/connectPanel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:paddingHorizontal="20dp"
-        android:paddingBottom="10dp">
+        android:paddingTop="8dp"
+        android:paddingBottom="12dp">
 
         <Button
             android:id="@+id/connect"
             android:layout_width="match_parent"
             android:layout_height="52dp"
-            android:layout_marginTop="6dp"
             android:text="CONNECT"
             android:backgroundTint="#4CAF50"
             android:textColor="#FFFFFF"
@@ -203,7 +44,7 @@
             android:id="@+id/traffic"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="8dp"
             android:gravity="center"
             android:fontFamily="monospace"
             android:textSize="13sp"
@@ -217,8 +58,7 @@
             android:minHeight="88dp"
             android:maxHeight="200dp"
             android:scrollbars="vertical"
-            android:layout_marginTop="10dp"
-            android:layout_marginBottom="10dp"
+            android:layout_marginTop="8dp"
             android:padding="12dp"
             android:background="#1A1A1A"
             android:fontFamily="monospace"
@@ -232,8 +72,32 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center"
-            android:layout_marginBottom="4dp"
+            android:layout_marginTop="4dp"
             android:textSize="11sp"
             android:textColor="#666666" />
     </LinearLayout>
+
+    <!-- Hidden: config fields still referenced by Java but not visible. Edit via ProfileEditActivity. -->
+    <LinearLayout
+        android:id="@+id/configFields"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        android:orientation="vertical">
+
+        <EditText android:id="@+id/address" android:layout_width="0dp" android:layout_height="0dp" />
+        <EditText android:id="@+id/uuid" android:layout_width="0dp" android:layout_height="0dp" />
+        <EditText android:id="@+id/path" android:layout_width="0dp" android:layout_height="0dp" />
+        <EditText android:id="@+id/sni" android:layout_width="0dp" android:layout_height="0dp" />
+        <EditText android:id="@+id/host" android:layout_width="0dp" android:layout_height="0dp" />
+        <TextView android:id="@+id/lockBanner" android:layout_width="0dp" android:layout_height="0dp" />
+    </LinearLayout>
+
+    <ScrollView
+        android:id="@+id/scrollView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone">
+        <LinearLayout android:layout_width="0dp" android:layout_height="0dp" />
+    </ScrollView>
 </LinearLayout>
