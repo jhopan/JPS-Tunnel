@@ -5,38 +5,38 @@
     android:height="108dp"
     android:viewportWidth="512"
     android:viewportHeight="512">
-    <!-- Dark rounded background -->
+    <!-- Dark rounded background (full viewport) -->
     <path
         android:fillColor="#03051A"
         android:pathData="M50,8H462A42,42 0,0 1,504 50V462A42,42 0,0 1,462 504H50A42,42 0,0 1,8 462V50A42,42 0,0 1,50 8Z" />
-    <!-- Circular key head -->
+    <!-- Circular key head (scaled 50% centered) -->
     <path
-        android:pathData="M177,255m-91,0a91,91 0,1 1,182 0a91,91 0,1 1,-182 0Z">
+        android:pathData="M216.5,255.5m-45.5,0a45.5,45.5 0,1 1,91,0a45.5,45.5 0,1 1,-91,0Z">
         <aapt:attr name="android:fillColor">
             <gradient
                 android:type="linear"
-                android:startX="150" android:startY="100"
-                android:endX="390" android:endY="390">
+                android:startX="203" android:startY="178"
+                android:endX="323" android:endY="323">
                 <item android:offset="0" android:color="#FF00FF8A"/>
                 <item android:offset="1" android:color="#FF00D9FF"/>
             </gradient>
         </aapt:attr>
     </path>
-    <!-- Key shaft with teeth -->
+    <!-- Key shaft with teeth (scaled 50% centered) -->
     <path
-        android:pathData="M239,212H432V298H393V357H322V298H239Z">
+        android:pathData="M247.5,234H344V277H324.5V306.5H289V277H247.5Z">
         <aapt:attr name="android:fillColor">
             <gradient
                 android:type="linear"
-                android:startX="150" android:startY="100"
-                android:endX="390" android:endY="390">
+                android:startX="203" android:startY="178"
+                android:endX="323" android:endY="323">
                 <item android:offset="0" android:color="#FF00FF8A"/>
                 <item android:offset="1" android:color="#FF00D9FF"/>
             </gradient>
         </aapt:attr>
     </path>
-    <!-- Keyhole -->
+    <!-- Keyhole (scaled 50% centered) -->
     <path
         android:fillColor="#07576B"
-        android:pathData="M177,255m-32,0a32,32 0,1 1,64 0a32,32 0,1 1,-64 0Z" />
+        android:pathData="M216.5,255.5m-16,0a16,16 0,1 1,32,0a16,16 0,1 1,-32,0Z" />
 </vector>
