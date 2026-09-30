@@ -521,7 +521,7 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void connect(String uri) { save(); VpnService.start(this, uri); }
-    private void disconnect() { VpnService.stop(this); }
+    private void disconnect() { VpnService.stop(MainActivity.this); }
     private void onVpnState(String value) {
         if (value == null) value = "Disconnected";
         status.setText(value);
@@ -663,13 +663,27 @@ public final class MainActivity extends AppCompatActivity {
                 edit.setVisibility(android.view.View.VISIBLE);
                 del.setVisibility(profileStore.count() > 1 ? android.view.View.VISIBLE : android.view.View.GONE);
                 v.setOnClickListener(x -> {
+                    boolean wasConnected = connected;
+                    if (wasConnected) {
+                        // disconnect current, then switch + reconnect to new profile
+                        VpnService.stop(MainActivity.this);
+                        connected = false;
+                        connect.setText("CONNECT");
+                        connect.setBackgroundTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#4CAF50")));
+                    }
                     saveActiveToStore();
                     activeProfileId = p.id;
                     profileStore.setActiveId(p.id);
                     loadFieldsFrom(p);
                     renderProfileTabs();
                     renderProfileList();
-                    show("Profil aktif: " + (p.name.isEmpty() ? "Untitled" : p.name));
+                    show("Profil: " + (p.name.isEmpty() ? "Untitled" : p.name));
+                    if (wasConnected) {
+                        // auto-reconnect to new profile after short delay (let old tunnel close)
+                        handler.postDelayed(() -> {
+                            if (!connected) requestConnect();
+                        }, 1500);
+                    }
                 });
                 edit.setOnClickListener(x -> {
                     android.content.Intent it = new android.content.Intent(profileList.getContext(), ProfileEditActivity.class);
