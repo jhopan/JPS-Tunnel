@@ -587,7 +587,7 @@ public final class VpnService extends android.net.VpnService {
             return "GAGAL: Proxy belum siap — sing-box masih starting.";
         } catch (Exception error) {
             logStep("Probe error: " + error.getClass().getSimpleName());
-            return "GAGAL: Internet check gagal — tunnel bermasalah.";
+            return "GAGAL: " + error.getClass().getSimpleName() + " — " + (error.getMessage() == null ? "tunnel bermasalah" : error.getMessage());
         } finally {
             if (connection != null) connection.disconnect();
         }
