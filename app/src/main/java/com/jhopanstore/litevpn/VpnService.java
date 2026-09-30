@@ -692,7 +692,19 @@ public final class VpnService extends android.net.VpnService {
         PendingIntent content = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         PendingIntent stop = PendingIntent.getService(this, 1, new Intent(this, VpnService.class).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? new Notification.Builder(this, CHANNEL) : new Notification.Builder(this);
-        return builder.setContentTitle("JPS Tunnel").setContentText(text).setSmallIcon(R.drawable.ic_vpn_key).setContentIntent(content).addAction(new Notification.Action.Builder(null, "Disconnect", stop).build()).setOngoing(true).build();
+        String profileName = "JPS Tunnel";
+        try {
+            android.content.SharedPreferences vpnPrefs = getSharedPreferences("vpn", MODE_PRIVATE);
+            String activeId = vpnPrefs.getString("active_profile", null);
+            if (activeId != null) {
+                org.json.JSONArray arr = new org.json.JSONArray(vpnPrefs.getString("profiles", "[]"));
+                for (int i = 0; i < arr.length(); i++) {
+                    org.json.JSONObject o = arr.getJSONObject(i);
+                    if (activeId.equals(o.optString("id"))) { profileName = o.optString("name", "JPS Tunnel"); break; }
+                }
+            }
+        } catch (Exception ignored) {}
+        return builder.setContentTitle(profileName).setContentText(text).setSmallIcon(R.drawable.ic_vpn_key).setContentIntent(content).addAction(new Notification.Action.Builder(null, "Disconnect", stop).build()).setOngoing(true).build();
     }
     private void updateNotification(String text) { ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).notify(NOTIFICATION_ID, notification(text)); }
 }
