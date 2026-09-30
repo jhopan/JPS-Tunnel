@@ -3,56 +3,101 @@ package com.jhopanstore.litevpn;
 import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-public final class SplashActivity extends Activity {
-    private static final long DELAY_MS = 1200;
+public class SplashActivity extends Activity {
 
-    @Override protected void onCreate(Bundle state) {
-        super.onCreate(state);
+    private static final long SPLASH_DELAY_MS = 1500;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
         requestWindowFeature(Window.FEATURE_NO_TITLE);
-        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        getWindow().setFlags(
+                WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                WindowManager.LayoutParams.FLAG_FULLSCREEN
+        );
+        getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        );
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
-        root.setBackgroundColor(Color.rgb(18, 18, 18));
+        root.setBackgroundColor(Color.parseColor("#0F1115"));
 
-        ImageView icon = new ImageView(this);
-        icon.setImageResource(R.drawable.ic_launcher_foreground);
-        root.addView(icon, new LinearLayout.LayoutParams(dp(96), dp(96)));
-        TextView title = new TextView(this);
-        title.setText("JPS Tunnel");
-        title.setTextColor(Color.WHITE);
-        title.setTextSize(24);
-        title.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(-2, -2);
-        titleParams.topMargin = dp(16);
-        root.addView(title, titleParams);
+        int dp16 = dp(16);
+        int dp8 = dp(8);
 
-        TextView subtitle = new TextView(this);
-        subtitle.setText("VLESS • WebSocket • TLS");
-        subtitle.setTextColor(Color.rgb(189, 189, 189));
-        subtitle.setTextSize(14);
-        subtitle.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(-2, -2);
-        subtitleParams.topMargin = dp(8);
-        root.addView(subtitle, subtitleParams);
+        // JhopanStore logo
+        ImageView logo = new ImageView(this);
+        logo.setImageResource(R.drawable.logo_jhopanstore);
+        logo.setAdjustViewBounds(true);
+        logo.setMaxHeight(dp(120));
+        LinearLayout.LayoutParams logoParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        logoParams.bottomMargin = dp16;
+        root.addView(logo, logoParams);
+
+        // "JPS Tunnel" title
+        TextView tvTitle = new TextView(this);
+        tvTitle.setText("JPS Tunnel");
+        tvTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24);
+        tvTitle.setTextColor(Color.WHITE);
+        tvTitle.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        titleParams.bottomMargin = dp8;
+        root.addView(tvTitle, titleParams);
+
+        // "By JhopanStore" subtitle
+        TextView tvSubtitle = new TextView(this);
+        tvSubtitle.setText("By JhopanStore");
+        tvSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        tvSubtitle.setTextColor(Color.parseColor("#A0A0A0"));
+        tvSubtitle.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        root.addView(tvSubtitle, subtitleParams);
 
         setContentView(root);
-        new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            startActivity(new Intent(this, MainActivity.class));
-            finish();
-        }, DELAY_MS);
+
+        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                Intent intent = new Intent(SplashActivity.this, MainActivity.class);
+                startActivity(intent);
+                finish();
+            }
+        }, SPLASH_DELAY_MS);
     }
 
-    private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
+    private int dp(int value) {
+        return (int) TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP, value, getResources().getDisplayMetrics()
+        );
+    }
 }
