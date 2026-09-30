@@ -604,12 +604,15 @@ public final class MainActivity extends AppCompatActivity {
     private static String bytes(long value) { return value < 1024 ? value + " B" : value < 1048576 ? String.format("%.1f KB", value / 1024d) : String.format("%.2f MB", value / 1048576d); }
 
     private String exportLink() {
-        String raw = address.getText().toString().trim(); int divider = raw.lastIndexOf(':');
+        // Read from ProfileStore (source of truth), not UI fields (may be hidden)
+        ProfileStore.Profile p = activeProfileId == null ? null : profileStore.get(activeProfileId);
+        if (p == null) return "";
+        String raw = p.address; int divider = raw.lastIndexOf(':');
         String server = divider > 0 ? raw.substring(0, divider) : raw;
         int port = divider > 0 ? parsePort(raw.substring(divider + 1)) : 443;
-        String serverName = text(sni); if (serverName.isEmpty()) serverName = server;
-        String wsHost = text(host); if (wsHost.isEmpty()) wsHost = serverName;
-        return VlessParser.export(new VlessConfig(server, port, text(uuid), text(path).isEmpty() ? "/" : text(path), serverName, wsHost, true));
+        String serverName = p.sni.isEmpty() ? server : p.sni;
+        String wsHost = p.host.isEmpty() ? serverName : p.host;
+        return VlessParser.export(new VlessConfig(server, port, p.uuid, p.path.isEmpty() ? "/" : p.path, serverName, wsHost, true));
     }
 
     private static int parsePort(String value) { try { int port = Integer.parseInt(value); return port > 0 && port < 65536 ? port : 443; } catch (Exception ignored) { return 443; } }
