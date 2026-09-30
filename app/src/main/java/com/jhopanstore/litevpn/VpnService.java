@@ -46,7 +46,7 @@ import io.github.sagernet.libbox.libbox.WIFIState;
 public final class VpnService extends android.net.VpnService {
     public interface Listener { void onState(String state); }
     private static volatile Listener listener;
-    private static final String ACTION_STOP = "com.jhopanstore.litevpn.STOP";
+    private static final String ACTION_STOP = "com.jhopanstore.litevpn.JPS_STOP";
     private static final String EXTRA_URI = "uri";
     private static final String STATUS_PREFS = "vpn_status";
     private static final String KEY_URI = "uri";

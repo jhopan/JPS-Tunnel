@@ -15,7 +15,7 @@ import org.json.JSONObject;
  * Wrong device = GCM auth failure, garbage in, garbage rejected.
  */
 public final class LicenseCodec {
-    private static final String SALT = "jhopanstore-license-v1";
+    private static final String SALT = "jps-tunnel-license-v1";
     private static final String PREFIX = "JLS1:";
     private static final byte VERSION = 0x01;
     private static final int IV_LEN = 12;
