@@ -45,6 +45,7 @@ jobs:
           go install golang.org/x/mobile/cmd/gobind@latest
           gomobile init
           cd sing-box
+          go get golang.org/x/mobile/bind@latest
           gomobile bind -o ../JPS-Tunnel-Core-android-arm64.aar -target=android/arm64 -androidapi=24 -javapkg=io.github.sagernet.libbox -tags="$TAGS" -ldflags="-s -w -X github.com/sagernet/sing-box/constant.Version=v${{ inputs.singbox_version || '1.11.15' }} -extldflags=-Wl,-z,max-page-size=16384" ./experimental/libbox
       - uses: actions/upload-artifact@v4
         with:
