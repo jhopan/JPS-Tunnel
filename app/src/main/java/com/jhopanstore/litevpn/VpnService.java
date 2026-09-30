@@ -62,9 +62,9 @@ public final class VpnService extends android.net.VpnService {
     private static final String HEALTH_URL = "https://www.gstatic.com/generate_204";
     private static final int PROBE_FAIL_LIMIT = 3;
     private static final int MAX_AUTO_RECONNECTS = 3;
-    private static final int PROBE_TIMEOUT_MS = 8_000;
-    private static final int PROBE_ATTEMPTS = 2;
-    private static final long PROBE_GAP_MS = 2_000;
+    private static final int PROBE_TIMEOUT_MS = 5_000;
+    private static final int PROBE_ATTEMPTS = 3;
+    private static final long PROBE_GAP_MS = 1_500;
 
     private ExecutorService worker = Executors.newSingleThreadExecutor();
     private ScheduledExecutorService heartbeat = Executors.newSingleThreadScheduledExecutor();
@@ -609,9 +609,9 @@ public final class VpnService extends android.net.VpnService {
             }
             logStep("Probe " + (attempt + 1) + "/" + PROBE_ATTEMPTS + " gagal: " + last);
         }
-        // Non-blocking: tunnel is up; truthfulness is handled by the periodic checkTunnel.
+        // Blocking: if probe failed all attempts, report the failure immediately
         lastProbeFailure = last;
-        return null;
+        return last;
     }
 
     private static String connectionFailure(Exception error) {
