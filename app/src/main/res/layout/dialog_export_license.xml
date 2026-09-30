@@ -56,18 +56,18 @@
         android:textStyle="bold"
         android:textSize="13sp"
         android:textColor="#FFFFFF" />
-    <EditText
+    <Button
         android:id="@+id/lic_expiry"
-        android:inputType="datetime"
         android:layout_width="match_parent"
         android:layout_height="46dp"
         android:layout_marginTop="6dp"
         android:hint="dd/mm/yyyy"
-        android:textColorHint="#777777"
+        android:text="dd/mm/yyyy (kosong = selamanya)"
         android:textColor="#FFFFFF"
+        android:textSize="13sp"
         android:backgroundTint="#333333"
-        android:padding="10dp"
-        android:singleLine="true" />
+        android:gravity="start|center_vertical"
+        android:paddingHorizontal="10dp" />
 
     <CheckBox
         android:id="@+id/lic_lock"

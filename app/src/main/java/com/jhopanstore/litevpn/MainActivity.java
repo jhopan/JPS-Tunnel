@@ -35,6 +35,7 @@ import java.io.BufferedReader;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.Locale;
 import java.util.UUID;
@@ -439,20 +440,29 @@ public final class MainActivity extends AppCompatActivity {
             if (title != null) { title.setTextColor(android.graphics.Color.WHITE); title.setTextSize(18); }
         });
         form.findViewById(R.id.lic_cancel).setOnClickListener(v -> dialog.dismiss());
+        // Expiry date picker (calendar)
+        final long[] expiryTimestamp = {0};
+        final Button expiryBtn = form.findViewById(R.id.lic_expiry);
+        expiryBtn.setTag("");
+        expiryBtn.setOnClickListener(v -> {
+            Calendar cal = Calendar.getInstance();
+            new android.app.DatePickerDialog(this, (view, year, month, day) -> {
+                Calendar picked = Calendar.getInstance();
+                picked.set(year, month, day, 23, 59, 59);
+                expiryTimestamp[0] = picked.getTimeInMillis();
+                String ds = String.format(Locale.US, "%02d/%02d/%04d", day, month + 1, year);
+                expiryBtn.setText(ds);
+                expiryBtn.setTag(ds);
+            }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show();
+        });
+        expiryBtn.setOnLongClickListener(v -> { expiryTimestamp[0] = 0; expiryBtn.setText("dd/mm/yyyy (kosong = selamanya)"); expiryBtn.setTag(""); show("Tanggal dikosongkan"); return true; });
         form.findViewById(R.id.lic_create).setOnClickListener(v -> {
             String name = ((EditText) form.findViewById(R.id.lic_name)).getText().toString().trim();
             String customerHwid = ((EditText) form.findViewById(R.id.lic_hwid)).getText().toString().trim().toUpperCase(Locale.US);
-            String expiryText = ((EditText) form.findViewById(R.id.lic_expiry)).getText().toString().trim();
+            String expiryText = (String) form.findViewById(R.id.lic_expiry).getTag();
             boolean lock = ((android.widget.CheckBox) form.findViewById(R.id.lic_lock)).isChecked();
             if (customerHwid.length() != 24) { show("HWID harus 24 karakter"); return; }
-            long expiry = 0;
-            if (!expiryText.isEmpty()) {
-                try {
-                    SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy", Locale.US);
-                    format.setLenient(false);
-                    expiry = format.parse(expiryText).getTime() + 86_400_000L; // end of that day
-                } catch (Exception error) { show("Tanggal salah (dd/mm/yyyy)"); return; }
-            }
+            long expiry = expiryTimestamp[0];
             try {
                 String payload = LicenseCodec.encode(new License(exportLink(), name, customerHwid, lock, expiry));
                 Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT).setType(JVS_MIME).putExtra(Intent.EXTRA_TITLE, "jhopanstore-locked.jvs");
