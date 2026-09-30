@@ -12,7 +12,7 @@ on:
       core_tag:
         description: core release tag
         required: true
-        default: 'core-v1.0.1'
+        default: 'core-v1.0.2'
 
 env:
   GO_VERSION: '1.23'
@@ -46,13 +46,18 @@ jobs:
           gomobile init
           cd sing-box
           go get golang.org/x/mobile/bind@latest
-          gomobile bind -o ../JPS-Tunnel-Core-android-v7-v8.aar -target=android/arm,android/arm64 -androidapi=24 -javapkg=io.github.sagernet.libbox -tags="$TAGS" -ldflags="-s -w -X github.com/sagernet/sing-box/constant.Version=v${{ inputs.singbox_version || '1.11.15' }} -extldflags=-Wl,-z,max-page-size=16384" ./experimental/libbox
-          jar tf ../JPS-Tunnel-Core-android-v7-v8.aar | grep -Fx 'jni/armeabi-v7a/libgojni.so'
-          jar tf ../JPS-Tunnel-Core-android-v7-v8.aar | grep -Fx 'jni/arm64-v8a/libgojni.so'
+          FLAGS="-s -w -X github.com/sagernet/sing-box/constant.Version=v${{ inputs.singbox_version || '1.11.15' }} -extldflags=-Wl,-z,max-page-size=16384"
+          gomobile bind -o ../JPS-Tunnel-Core-android-v7.aar -target=android/arm -androidapi=24 -javapkg=io.github.sagernet.libbox -tags="$TAGS" -ldflags="$FLAGS" ./experimental/libbox
+          gomobile bind -o ../JPS-Tunnel-Core-android-v8.aar -target=android/arm64 -androidapi=24 -javapkg=io.github.sagernet.libbox -tags="$TAGS" -ldflags="$FLAGS" ./experimental/libbox
+          gomobile bind -o ../JPS-Tunnel-Core-android-universal.aar -target=android/arm,android/arm64 -androidapi=24 -javapkg=io.github.sagernet.libbox -tags="$TAGS" -ldflags="$FLAGS" ./experimental/libbox
+          jar tf ../JPS-Tunnel-Core-android-v7.aar | grep -Fx 'jni/armeabi-v7a/libgojni.so'
+          jar tf ../JPS-Tunnel-Core-android-v8.aar | grep -Fx 'jni/arm64-v8a/libgojni.so'
+          jar tf ../JPS-Tunnel-Core-android-universal.aar | grep -Fx 'jni/armeabi-v7a/libgojni.so'
+          jar tf ../JPS-Tunnel-Core-android-universal.aar | grep -Fx 'jni/arm64-v8a/libgojni.so'
       - uses: actions/upload-artifact@v4
         with:
-          name: core-android-v7-v8
-          path: JPS-Tunnel-Core-android-v7-v8.aar
+          name: core-android-aar
+          path: JPS-Tunnel-Core-android-*.aar
           if-no-files-found: error
 
   desktop:
