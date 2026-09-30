@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
     android:focusable="true"
     android:focusableInTouchMode="true"
     android:background="#121212">
@@ -11,27 +10,20 @@
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
+        android:layout_alignParentTop="true"
         android:background="#1E1E1E"
         android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar" />
-
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/profileList"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:minHeight="400dp"
-        android:background="#121212"
-        android:paddingVertical="8dp"
-        android:nestedScrollingEnabled="false" />
 
     <LinearLayout
         android:id="@+id/connectPanel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
         android:orientation="vertical"
         android:gravity="center_horizontal"
         android:paddingHorizontal="20dp"
-        android:paddingBottom="16dp">
+        android:paddingTop="8dp"
+        android:paddingBottom="12dp">
 
         <Button
             android:id="@+id/connect"
@@ -47,7 +39,7 @@
             android:id="@+id/traffic"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="8dp"
             android:gravity="center"
             android:fontFamily="monospace"
             android:textSize="13sp"
@@ -61,7 +53,7 @@
             android:minHeight="88dp"
             android:maxHeight="200dp"
             android:scrollbars="vertical"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="8dp"
             android:padding="12dp"
             android:background="#1A1A1A"
             android:fontFamily="monospace"
@@ -75,12 +67,22 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:gravity="center"
-            android:layout_marginTop="6dp"
+            android:layout_marginTop="4dp"
             android:textSize="11sp"
             android:textColor="#666666" />
     </LinearLayout>
 
-    <!-- Hidden: config fields still referenced by Java but not visible. Edit via ProfileEditActivity. -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/profileList"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_below="@+id/toolbar"
+        android:layout_above="@+id/connectPanel"
+        android:background="#121212"
+        android:paddingVertical="8dp"
+        android:nestedScrollingEnabled="false" />
+
+    <!-- Hidden: config fields referenced by Java, not visible. Edit via ProfileEditActivity. -->
     <LinearLayout
         android:id="@+id/configFields"
         android:layout_width="0dp"
@@ -103,4 +105,4 @@
         android:visibility="gone">
         <LinearLayout android:layout_width="0dp" android:layout_height="0dp" />
     </ScrollView>
-</LinearLayout>
+</RelativeLayout>
