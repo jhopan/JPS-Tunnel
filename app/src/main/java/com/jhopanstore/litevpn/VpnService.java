@@ -563,7 +563,7 @@ public final class VpnService extends android.net.VpnService {
             reconnectTunnel();
         } else {
             logStep("Gagal setelah " + PROBE_FAIL_LIMIT + "× probe berturut-turut");
-            fail("GAGAL: server tidak merespons setelah 3x percobaan. Cek: server hidup? address/UUID/path/SNI benar?");
+            fail(failure); // use the specific error from verifyTunnel() (HTTP 503, timeout, etc.)
         }
     }
 
