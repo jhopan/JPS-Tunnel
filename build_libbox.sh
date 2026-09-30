@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stable compatible ARM64 libbox for VpnService: sing-box v1.11.0.
+# Stable compatible ARMv7 + ARM64 libbox for VpnService: sing-box v1.11.0.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -23,7 +23,7 @@ cd "$WORK/sing-box"
 
 # gVisor supports Android TUN; Clash API is required internally by v1.11 libbox service startup. QUIC, uTLS, and OneRing are excluded.
 gomobile bind \
-  -target=android/arm64 \
+  -target=android/arm,android/arm64 \
   -androidapi=24 \
   -javapkg=io.github.sagernet.libbox \
   -tags="with_gvisor,with_clash_api" \
@@ -32,7 +32,8 @@ gomobile bind \
 
 mv libbox.aar "$CANDIDATE"
 mapfile -t native < <(jar tf "$CANDIDATE" | grep '^jni/.*/libgojni\.so$')
-if [ "${native[*]}" != 'jni/arm64-v8a/libgojni.so' ]; then
+expected=$'jni/arm64-v8a/libgojni.so\njni/armeabi-v7a/libgojni.so'
+if [ "$(printf '%s\n' "${native[@]}" | sort)" != "$expected" ]; then
   printf 'Unexpected native libraries:\n%s\n' "${native[*]:-none}" >&2
   exit 1
 fi
