@@ -45,7 +45,7 @@ public final class MainActivity extends AppCompatActivity {
     private static final int IMPORT_FILE = 11;
     private static final int EXPORT_FILE = 12;
     private static final int EXPORT_LICENSE = 14;
-    private static final String JVS_MIME = "application/x-jhopanstore-vpn";
+    private static final String JVS_MIME = "application/x-jps-tunnel";
     private final Handler handler = new Handler(Looper.getMainLooper());
     private SharedPreferences prefs;
     private EditText address, uuid, path, sni, host;
@@ -351,7 +351,7 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void createExportFile() {
-        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT).setType(JVS_MIME).putExtra(Intent.EXTRA_TITLE, "jhopanstore-vpn.jvs");
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT).setType(JVS_MIME).putExtra(Intent.EXTRA_TITLE, "jps-tunnel.jps");
         startActivityForResult(intent, EXPORT_FILE);
     }
 
@@ -484,7 +484,7 @@ public final class MainActivity extends AppCompatActivity {
             long expiry = expiryTimestamp[0];
             try {
                 String payload = LicenseCodec.encode(new License(exportLink(), name, customerHwid, lock, expiry));
-                Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT).setType(JVS_MIME).putExtra(Intent.EXTRA_TITLE, "jhopanstore-locked.jvs");
+                Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT).setType(JVS_MIME).putExtra(Intent.EXTRA_TITLE, "jps-locked.jps");
                 pendingExportPayload = payload;
                 startActivityForResult(intent, EXPORT_LICENSE);
                 dialog.dismiss();

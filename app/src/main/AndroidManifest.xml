@@ -14,7 +14,7 @@
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="content" android:mimeType="application/x-jhopanstore-vpn"/>
+                <data android:scheme="content" android:mimeType="application/x-jps-tunnel"/>
             </intent-filter>
         </activity>
         <activity android:name=".ProfileEditActivity" android:exported="false" android:windowSoftInputMode="stateAlwaysHidden" />

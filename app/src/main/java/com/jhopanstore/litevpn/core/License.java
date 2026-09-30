@@ -1,7 +1,7 @@
 package com.jhopanstore.litevpn.core;
 
 /**
- * Offline license payload embedded in a locked .jvs file.
+ * Offline license payload embedded in a locked .jps file.
  * Created by the seller (this app): current config encrypted with the
  * customer's HWID-derived key, so only that customer's device can open it.
  */

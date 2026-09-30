@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:id="@+id/action_import_clipboard" android:title="Import Clipboard" />
-    <item android:id="@+id/action_import_file" android:title="Import .jvs File" />
+    <item android:id="@+id/action_import_file" android:title="Import .jps File" />
     <item android:id="@+id/action_export_clipboard" android:title="Export Clipboard" />
-    <item android:id="@+id/action_export_file" android:title="Export .jvs File" />
+    <item android:id="@+id/action_export_file" android:title="Export .jps File" />
     <item android:id="@+id/action_export_license" android:title="Export Locked Config" />
     <item android:id="@+id/action_settings" android:title="Pengaturan" />
     <item android:id="@+id/action_clear" android:title="Clear Config" />
