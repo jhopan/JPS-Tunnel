@@ -1,4 +1,4 @@
-package com.jhopanstore.litevpn;
+package com.jps.tunnel;
 
 import android.app.Activity;
 import android.content.Intent;

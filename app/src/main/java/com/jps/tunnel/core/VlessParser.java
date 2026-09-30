@@ -1,4 +1,4 @@
-package com.jhopanstore.litevpn.core;
+package com.jps.tunnel.core;
 
 import android.net.Uri;
 import java.net.URLEncoder;

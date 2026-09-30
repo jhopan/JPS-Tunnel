@@ -1,11 +1,11 @@
 plugins { id 'com.android.application' }
 
 android {
-    namespace 'com.jhopanstore.litevpn'
+    namespace 'com.jps.tunnel'
     compileSdk 35
 
     defaultConfig {
-        applicationId 'com.jhopanstore.litevpn'
+        applicationId 'com.jps.tunnel'
         minSdk 24
         targetSdk 35
         versionCode 5

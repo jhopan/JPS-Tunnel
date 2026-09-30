@@ -1,4 +1,4 @@
-package com.jhopanstore.litevpn.core;
+package com.jps.tunnel.core;
 
 /**
  * Offline license payload embedded in a locked .jps file.

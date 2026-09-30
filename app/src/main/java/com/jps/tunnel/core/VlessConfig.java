@@ -1,4 +1,4 @@
-package com.jhopanstore.litevpn.core;
+package com.jps.tunnel.core;
 
 public final class VlessConfig {
     public final String address;

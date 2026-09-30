@@ -1,11 +1,11 @@
-package com.jhopanstore.litevpn;
+package com.jps.tunnel;
 
 import android.os.Bundle;
 import android.widget.EditText;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
-import com.jhopanstore.litevpn.core.ProfileStore;
+import com.jps.tunnel.core.ProfileStore;
 
 /** Full-screen profile editor (NekoBox style): name + config in one page. */
 public final class ProfileEditActivity extends AppCompatActivity {
@@ -47,7 +47,7 @@ public final class ProfileEditActivity extends AppCompatActivity {
         // raw URI import (clipboard): prefill via parser
         if (rawUri != null && !rawUri.isEmpty()) {
             try {
-                com.jhopanstore.litevpn.core.VlessConfig c = com.jhopanstore.litevpn.core.VlessParser.parse(rawUri.trim());
+                com.jps.tunnel.core.VlessConfig c = com.jps.tunnel.core.VlessParser.parse(rawUri.trim());
                 address.setText(c.address + ":" + c.port); uuid.setText(c.uuid); path.setText(c.path);
                 sni.setText(c.sni); host.setText(c.host);
             } catch (Exception error) {
@@ -65,7 +65,7 @@ public final class ProfileEditActivity extends AppCompatActivity {
                     return;
                 }
                 // validate before save
-                com.jhopanstore.litevpn.core.VlessParser.export(new com.jhopanstore.litevpn.core.VlessConfig(
+                com.jps.tunnel.core.VlessParser.export(new com.jps.tunnel.core.VlessConfig(
                     hostPart(addr), portOf(addr), uid,
                     path.getText().toString().trim().isEmpty() ? "/" : path.getText().toString().trim(),
                     sni.getText().toString().trim().isEmpty() ? hostPart(addr) : sni.getText().toString().trim(),

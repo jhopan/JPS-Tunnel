@@ -1,4 +1,4 @@
-package com.jhopanstore.litevpn;
+package com.jps.tunnel;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -16,9 +16,9 @@ import android.net.NetworkCapabilities;
 import android.os.Build;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
-import com.jhopanstore.litevpn.core.SingboxConfig;
-import com.jhopanstore.litevpn.core.VlessConfig;
-import com.jhopanstore.litevpn.core.VlessParser;
+import com.jps.tunnel.core.SingboxConfig;
+import com.jps.tunnel.core.VlessConfig;
+import com.jps.tunnel.core.VlessParser;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.Inet4Address;
@@ -46,7 +46,7 @@ import io.github.sagernet.libbox.libbox.WIFIState;
 public final class VpnService extends android.net.VpnService {
     public interface Listener { void onState(String state); }
     private static volatile Listener listener;
-    private static final String ACTION_STOP = "com.jhopanstore.litevpn.JPS_STOP";
+    private static final String ACTION_STOP = "com.jps.tunnel.JPS_STOP";
     private static final String EXTRA_URI = "uri";
     private static final String STATUS_PREFS = "vpn_status";
     private static final String KEY_URI = "uri";

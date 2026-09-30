@@ -1,4 +1,4 @@
-package com.jhopanstore.litevpn.core;
+package com.jps.tunnel.core;
 
 import android.content.Context;
 import android.content.SharedPreferences;

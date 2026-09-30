@@ -1,4 +1,4 @@
-package com.jhopanstore.litevpn;
+package com.jps.tunnel;
 
 import android.Manifest;
 import android.content.ClipData;
@@ -25,12 +25,12 @@ import androidx.appcompat.widget.Toolbar;
 import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
-import com.jhopanstore.litevpn.core.Installation;
-import com.jhopanstore.litevpn.core.ProfileStore;
-import com.jhopanstore.litevpn.core.License;
-import com.jhopanstore.litevpn.core.LicenseCodec;
-import com.jhopanstore.litevpn.core.VlessConfig;
-import com.jhopanstore.litevpn.core.VlessParser;
+import com.jps.tunnel.core.Installation;
+import com.jps.tunnel.core.ProfileStore;
+import com.jps.tunnel.core.License;
+import com.jps.tunnel.core.LicenseCodec;
+import com.jps.tunnel.core.VlessConfig;
+import com.jps.tunnel.core.VlessParser;
 import java.io.BufferedReader;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
