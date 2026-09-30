@@ -1,15 +1,18 @@
 name: core
 
 on:
+  push:
+    tags: ['core-v*']
   workflow_dispatch:
     inputs:
       singbox_version:
-        description: 'sing-box version (e.g. 1.11.15)'
-        required: false
+        description: sing-box version without v prefix
+        required: true
         default: '1.11.15'
       core_tag:
-        description: 'core release tag (e.g. core-v1.0.0)'
+        description: core release tag
         required: true
+        default: 'core-v1.0.0'
 
 env:
   GO_VERSION: '1.23'
@@ -17,10 +20,8 @@ env:
 
 jobs:
   android:
-    name: core-android-arm64
+    name: android-arm64-libbox
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/setup-go@v5
         with:
@@ -32,97 +33,57 @@ jobs:
       - uses: nttld/setup-ndk@v1
         id: ndk
         with:
-          ndk-version: r25b
-      - name: Clone sing-box
-        run: git clone --depth 1 --branch v${{ inputs.singbox_version }} https://github.com/SagerNet/sing-box.git sing-box
-      - name: Build libbox AAR
+          ndk-version: r28
+      - name: Build Android libbox
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: |
-          cd sing-box
-          go get golang.org/x/mobile/bind@latest
+          set -euo pipefail
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          git clone --depth 1 --branch "v${{ inputs.singbox_version || '1.11.15' }}" https://github.com/SagerNet/sing-box.git sing-box
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
           gomobile init
-          gomobile bind -v -o ../JPS-Core-android-arm64.aar             -target=android/arm64             -androidapi=24             -javapkg=io.github.sagernet.libbox             -tags="$TAGS"             -ldflags="-s -w -X github.com/sagernet/sing-box/constant.Version=v${{ inputs.singbox_version }} -extldflags=-Wl,-z,max-page-size=16384"             ./experimental/libbox
-      - name: Checksum
-        run: sha256sum JPS-Core-android-arm64.aar > JPS-Core-android-arm64.aar.sha256
+          cd sing-box
+          gomobile bind -o ../JPS-Tunnel-Core-android-arm64.aar -target=android/arm64 -androidapi=24 -javapkg=io.github.sagernet.libbox -tags="$TAGS" -ldflags="-s -w -X github.com/sagernet/sing-box/constant.Version=v${{ inputs.singbox_version || '1.11.15' }} -extldflags=-Wl,-z,max-page-size=16384" ./experimental/libbox
       - uses: actions/upload-artifact@v4
         with:
-          name: core-android
-          path: JPS-Core-android-arm64*
+          name: core-android-arm64
+          path: JPS-Tunnel-Core-android-arm64.aar
+          if-no-files-found: error
 
-  linux-debian:
-    name: core-linux-debian-amd64
+  desktop:
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-amd64, goos: linux, goarch: amd64, output: JPS-Tunnel-Core-linux-amd64 }
+          - { name: linux-arm64, goos: linux, goarch: arm64, output: JPS-Tunnel-Core-linux-arm64 }
+          - { name: freebsd-amd64, goos: freebsd, goarch: amd64, output: JPS-Tunnel-Core-freebsd-amd64 }
+          - { name: windows-amd64, goos: windows, goarch: amd64, output: JPS-Tunnel-Core-windows-amd64.exe }
+          - { name: macos-intel, goos: darwin, goarch: amd64, output: JPS-Tunnel-Core-macos-intel }
+          - { name: macos-apple, goos: darwin, goarch: arm64, output: JPS-Tunnel-Core-macos-apple }
     steps:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-      - name: Clone sing-box
-        run: git clone --depth 1 --branch v${{ inputs.singbox_version }} https://github.com/SagerNet/sing-box.git sing-box
-      - name: Build
+      - name: Build sing-box
         run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "v${{ inputs.singbox_version || '1.11.15' }}" https://github.com/SagerNet/sing-box.git sing-box
           cd sing-box
-          go build -trimpath -tags "$TAGS"             -ldflags "-s -w -X github.com/sagernet/sing-box/constant.Version=v${{ inputs.singbox_version }}"             -o ../JPS-Core-linux-debian-amd64 ./cmd/sing-box
-      - name: Checksum
-        run: sha256sum JPS-Core-linux-debian-amd64 > JPS-Core-linux-debian-amd64.sha256
+          CGO_ENABLED=0 GOOS="${{ matrix.goos }}" GOARCH="${{ matrix.goarch }}" go build -trimpath -tags "$TAGS" -ldflags "-s -w -X github.com/sagernet/sing-box/constant.Version=v${{ inputs.singbox_version || '1.11.15' }}" -o "../${{ matrix.output }}" ./cmd/sing-box
       - uses: actions/upload-artifact@v4
         with:
-          name: core-linux-debian
-          path: JPS-Core-linux-debian*
-
-  freebsd:
-    name: core-freebsd-amd64
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-      - name: Clone sing-box
-        run: git clone --depth 1 --branch v${{ inputs.singbox_version }} https://github.com/SagerNet/sing-box.git sing-box
-      - name: Build (cross-compile GOOS=freebsd)
-        run: |
-          cd sing-box
-          GOOS=freebsd GOARCH=amd64 go build -trimpath -tags "$TAGS"             -ldflags "-s -w -X github.com/sagernet/sing-box/constant.Version=v${{ inputs.singbox_version }}"             -o ../JPS-Core-freebsd-amd64 ./cmd/sing-box
-      - name: Checksum
-        run: sha256sum JPS-Core-freebsd-amd64 > JPS-Core-freebsd-amd64.sha256
-      - uses: actions/upload-artifact@v4
-        with:
-          name: core-freebsd
-          path: JPS-Core-freebsd*
-
-  macos:
-    name: core-macos-intel-and-apple
-    runs-on: macos-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-      - name: Clone sing-box
-        run: git clone --depth 1 --branch v${{ inputs.singbox_version }} https://github.com/SagerNet/sing-box.git sing-box
-      - name: Build Intel + Apple Silicon
-        run: |
-          cd sing-box
-          go build -trimpath -tags "$TAGS"             -ldflags "-s -w -X github.com/sagernet/sing-box/constant.Version=v${{ inputs.singbox_version }}"             -o ../JPS-Core-macos-intel ./cmd/sing-box
-          GOARCH=arm64 go build -trimpath -tags "$TAGS"             -ldflags "-s -w -X github.com/sagernet/sing-box/constant.Version=v${{ inputs.singbox_version }}"             -o ../JPS-Core-macos-apple ./cmd/sing-box
-      - name: Checksums
-        run: |
-          sha256sum JPS-Core-macos-intel > JPS-Core-macos-intel.sha256
-          sha256sum JPS-Core-macos-apple > JPS-Core-macos-apple.sha256
-      - uses: actions/upload-artifact@v4
-        with:
-          name: core-macos
-          path: JPS-Core-macos-*
+          name: core-${{ matrix.name }}
+          path: ${{ matrix.output }}
+          if-no-files-found: error
 
   release:
-    needs: [android, linux-debian, freebsd, macos]
+    name: release
+    needs: [android, desktop]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -131,33 +92,18 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      - name: Collect
+      - name: Create checksums
         run: |
-          mkdir release
-          mv dist/JPS-Core-* release/
-          cd release
-          sha256sum * > checksums.txt
-          echo "=== FINAL RELEASE CONTENTS ==="
-          ls -la
-      - name: Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ inputs.core_tag }}
-          name: "Core ${{ inputs.core_tag }} (sing-box ${{ inputs.singbox_version }})"
-          body: |
-            JPS Tunnel core — sing-box ${{ inputs.singbox_version }}
-
-            | file | platform |
-            |---|---|
-            | JPS-Core-android-arm64.aar | Android (libbox) |
-            | JPS-Core-linux-debian-amd64 | Linux Debian/Ubuntu |
-            | JPS-Core-freebsd-amd64 | FreeBSD |
-            | JPS-Core-macos-intel | macOS Intel |
-            | JPS-Core-macos-apple | macOS Apple Silicon |
-
-            Tags: with_gvisor, with_clash_api
-
-            Verify: `sha256sum -c checksums.txt`
-          files: |
-            release/JPS-Core-*
-          fail_on_unmatched_files: true
+          set -euo pipefail
+          cd dist
+          sha256sum JPS-Tunnel-Core-* > SHA256SUMS.txt
+          ls -lh
+      - name: Publish core release
+        run: |
+          set -euo pipefail
+          TAG="${{ github.ref_name }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then TAG="${{ inputs.core_tag }}"; fi
+          gh release delete "$TAG" --yes 2>/dev/null || true
+          gh release create "$TAG" dist/JPS-Tunnel-Core-* dist/SHA256SUMS.txt --title "JPS Tunnel Core $TAG" --notes "sing-box v${{ inputs.singbox_version || '1.11.15' }} core release. Android libbox includes gVisor and Clash API. SHA256SUMS.txt verifies assets." --latest=false
+        env:
+          GH_TOKEN: ${{ github.token }}
