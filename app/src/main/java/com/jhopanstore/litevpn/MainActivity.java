@@ -82,12 +82,7 @@ public final class MainActivity extends AppCompatActivity {
         profileList = findViewById(R.id.profileList);
         profileList.setLayoutManager(new LinearLayoutManager(this));
         TextView version = findViewById(R.id.version);
-        try {
-            android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
-            String installed = android.text.format.DateFormat.format("dd/MM HH:mm", info.lastUpdateTime).toString();
-            // install stamp makes it obvious which APK is actually running
-            version.setText("v" + info.versionName + " • terpasang " + installed);
-        }
+        try { version.setText("v" + getPackageManager().getPackageInfo(getPackageName(), 0).versionName + " • by JhopanStore"); }
         catch (Exception ignored) { version.setVisibility(android.view.View.GONE); }
         load();
         hwid = Installation.id(this);
