@@ -84,15 +84,17 @@ public final class MainActivity extends AppCompatActivity {
         profileList.setLayoutManager(new LinearLayoutManager(this));
         profileList.setHasFixedSize(true);
         // Force list to fill space: set height after layout pass
-        final android.view.View toolbar = findViewById(R.id.toolbar);
+        final android.view.View toolbarV = findViewById(R.id.toolbar);
         final android.view.View panel = findViewById(R.id.connectPanel);
         final Runnable resizeList = () -> {
             int total = findViewById(android.R.id.content).getHeight();
-            int tH = toolbar == null ? 0 : toolbar.getHeight();
+            int tH = toolbarV == null ? 0 : toolbarV.getHeight();
             int pH = panel == null ? 0 : panel.getHeight();
             int listH = total - tH - pH;
             if (listH > 100) {
-                android.widget.RelativeLayout.LayoutParams lp = (android.widget.RelativeLayout.LayoutParams) profileList.getLayoutParams();
+                android.widget.RelativeLayout.LayoutParams lp = new android.widget.RelativeLayout.LayoutParams(profileList.getLayoutParams().width, listH);
+                lp.addRule(android.widget.RelativeLayout.BELOW, R.id.toolbar);
+                lp.addRule(android.widget.RelativeLayout.ABOVE, R.id.connectPanel);
                 lp.height = listH;
                 profileList.setLayoutParams(lp);
             }

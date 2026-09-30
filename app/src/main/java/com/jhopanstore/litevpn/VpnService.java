@@ -622,7 +622,7 @@ public final class VpnService extends android.net.VpnService {
         if (text.contains("refused") || text.contains("connection refused")) return "GAGAL: Server menolak koneksi.\nPenyebab: server down atau port tertutup.\nSolusi: cek server hidup, port 443 terbuka.";
         if (text.contains("timeout") || text.contains("timed out")) return "GAGAL: Koneksi timeout.\nPenyebab: server tidak merespons atau jaringan lambat.\nSolusi: cek koneksi internet, coba lagi.";
         if (text.contains("reset") || text.contains("broken pipe")) return "GAGAL: Koneksi diputus server.\nPenyebab: server/CDN menutup koneksi paksa.\nSolusi: coba profil lain atau tunggu sebentar.";
-        return "GAGAL: Tidak bisa connect.\nPenyebab: cek server, port, path, SNI, dan Host.\nSolusi: pastikan semua field terisi benar.";
+        return "GAGAL: " + error.getClass().getSimpleName() + ": " + error.getMessage() + "\nPenyebab: cek server, port, path, SNI, dan Host.\nSolusi: pastikan semua field terisi benar. SS kirim ke admin.";
     }
 
     private void reconnectTunnel() {
