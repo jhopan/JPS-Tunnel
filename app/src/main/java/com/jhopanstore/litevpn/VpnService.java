@@ -563,7 +563,7 @@ public final class VpnService extends android.net.VpnService {
             reconnectTunnel();
         } else {
             logStep("Gagal setelah " + PROBE_FAIL_LIMIT + "× probe berturut-turut");
-            fail("Cannot connect: check server, port, path, SNI, and Host");
+            fail("GAGAL: Tidak bisa connect setelah beberapa percobaan.\nPenyebab: server tidak merespons atau config salah.\nSolusi: cek server hidup, pastikan address/UUID/path/SNI/Host benar. SS pesan ini kirim ke admin.");
         }
     }
 
