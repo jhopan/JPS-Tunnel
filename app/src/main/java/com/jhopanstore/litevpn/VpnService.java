@@ -578,16 +578,16 @@ public final class VpnService extends android.net.VpnService {
             int code = connection.getResponseCode();
             if (code == HttpURLConnection.HTTP_NO_CONTENT || code == HttpURLConnection.HTTP_OK || code == HttpURLConnection.HTTP_ACCEPTED) return null;
             logStep("Probe " + HEALTH_URL + " → HTTP " + code);
-            return "Internet check failed: server returned HTTP " + code;
+            return explainHttp(code);
         } catch (SocketTimeoutException error) {
             logStep("Probe timeout setelah " + PROBE_TIMEOUT_MS + " ms");
-            return "Internet check timed out";
+            return "GAGAL: Internet check timeout.\nPenyebab: tunnel tidak merespons (WS zombie).\nSolusi: tunggu auto-reconnect atau ganti profil.";
         } catch (java.net.ConnectException error) {
             logStep("Proxy 127.0.0.1:" + SingboxConfig.PROXY_PORT + " belum siap");
-            return "VPN proxy unavailable";
+            return "GAGAL: VPN proxy belum siap.\nPenyebab: sing-box belum selesai start.\nSolusi: tunggu sebentar atau restart app.";
         } catch (Exception error) {
             logStep("Probe error: " + error.getClass().getSimpleName());
-            return "Internet check failed";
+            return "GAGAL: Internet check gagal.\nPenyebab: tunnel bermasalah.\nSolusi: coba reconnect atau ganti profil.";
         } finally {
             if (connection != null) connection.disconnect();
         }
@@ -615,11 +615,14 @@ public final class VpnService extends android.net.VpnService {
     }
 
     private static String connectionFailure(Exception error) {
-        if (error instanceof java.net.UnknownHostException) return "DNS failed: server name could not be resolved";
+        if (error instanceof java.net.UnknownHostException) return "GAGAL: DNS tidak bisa resolve server.\nPenyebab: domain server salah atau DNS mati.\nSolusi: cek address, pastikan domain benar.";
         String text = String.valueOf(error.getMessage()).toLowerCase();
-        if (text.contains("tls") || text.contains("certificate")) return "TLS failed: check SNI or allowInsecure";
-        if (text.contains("websocket") || text.contains("ws ")) return "WebSocket failed: check path or Host";
-        return "Connection failed: check server, port, path, SNI, and Host";
+        if (text.contains("tls") || text.contains("certificate")) return "GAGAL: TLS handshake gagal.\nPenyebab: SNI salah atau sertifikat tidak cocok.\nSolusi: cek SNI, pastikan allowInsecure=true.";
+        if (text.contains("websocket") || text.contains("ws ")) return "GAGAL: WebSocket gagal.\nPenyebab: path atau Host header salah.\nSolusi: cek path dan Host di profil.";
+        if (text.contains("refused") || text.contains("connection refused")) return "GAGAL: Server menolak koneksi.\nPenyebab: server down atau port tertutup.\nSolusi: cek server hidup, port 443 terbuka.";
+        if (text.contains("timeout") || text.contains("timed out")) return "GAGAL: Koneksi timeout.\nPenyebab: server tidak merespons atau jaringan lambat.\nSolusi: cek koneksi internet, coba lagi.";
+        if (text.contains("reset") || text.contains("broken pipe")) return "GAGAL: Koneksi diputus server.\nPenyebab: server/CDN menutup koneksi paksa.\nSolusi: coba profil lain atau tunggu sebentar.";
+        return "GAGAL: Tidak bisa connect.\nPenyebab: cek server, port, path, SNI, dan Host.\nSolusi: pastikan semua field terisi benar.";
     }
 
     private void reconnectTunnel() {
@@ -639,7 +642,28 @@ public final class VpnService extends android.net.VpnService {
         worker.execute(() -> connect(uri));
     }
 
-    private void fail(String reason) {
+    
+    /** Translate HTTP status codes to user-friendly diagnosis. */
+    private static String explainHttp(int code) {
+        switch (code) {
+            case 400: return "GAGAL: HTTP 400 Bad Request.\nPenyebab: format request salah.\nSolusi: cek path dan Host.";
+            case 401: return "GAGAL: HTTP 401 Unauthorized.\nPenyebab: UUID salah atau tidak dikenali server.\nSolusi: cek UUID di profil.";
+            case 403: return "GAGAL: HTTP 403 Forbidden.\nPenyebab: Cloudflare/CDN blok akses.\nSolusi: coba SNI/Host lain, atau ganti profil.";
+            case 404: return "GAGAL: HTTP 404 Not Found.\nPenyebab: path salah, server tidak kenali endpoint.\nSolusi: cek path (mis. /vless).";
+            case 408: return "GAGAL: HTTP 408 Timeout.\nPenyebab: server lambat merespons.\nSolusi: tunggu atau coba profil lain.";
+            case 429: return "GAGAL: HTTP 429 Too Many Requests.\nPenyebab: rate limit dari Cloudflare/CDN.\nSolusi: tunggu beberapa menit atau ganti profil.";
+            case 500: return "GAGAL: HTTP 500 Server Error.\nPenyebab: Xray/server crash.\nSolusi: server bermasalah, hubungi admin.";
+            case 502: return "GAGAL: HTTP 502 Bad Gateway.\nPenyebab: Xray di belakang proxy mati.\nSolusi: server bermasalah, hubungi admin.";
+            case 503: return "GAGAL: HTTP 503 Service Unavailable.\nPenyebab: server overload/maintenance.\nSolusi: tunggu server stabil.";
+            case 504: return "GAGAL: HTTP 504 Gateway Timeout.\nPenyebab: gateway tidak dapat balas dari Xray.\nSolusi: server bermasalah, hubungi admin.";
+            default:
+                if (code >= 500) return "GAGAL: HTTP " + code + " (server error).\nPenyebab: server bermasalah.\nSolusi: hubungi admin.";
+                if (code >= 400) return "GAGAL: HTTP " + code + " (client error).\nPenyebab: config salah.\nSolusi: cek profil.";
+                return "GAGAL: HTTP " + code + ".\nSolusi: coba reconnect.";
+        }
+    }
+
+private void fail(String reason) {
         synchronized (lifecycleLock) { connecting = false; running = false; terminalFailure = true; }
         closeCore();
         statusPrefs().edit().remove(KEY_URI).putLong(KEY_LAST_PROBE, 0).apply();
