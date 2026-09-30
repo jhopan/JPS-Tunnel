@@ -80,7 +80,7 @@
         android:layout_above="@+id/connectPanel"
         android:background="#121212"
         android:paddingVertical="8dp"
-        android:nestedScrollingEnabled="false" />
+        />
 
     <!-- Hidden: config fields referenced by Java, not visible. Edit via ProfileEditActivity. -->
     <LinearLayout
