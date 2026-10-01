@@ -96,7 +96,8 @@ type uiState struct {
 
 	btnConnect       widget.Clickable
 	btnDisconnect    widget.Clickable
-	btnNavImport     widget.Clickable
+	btnNavClipboard  widget.Clickable
+	btnNavFile       widget.Clickable
 	btnNavProfiles   widget.Clickable
 	btnNavSettings   widget.Clickable
 	btnBack          widget.Clickable
@@ -136,8 +137,8 @@ func run() {
 	w := new(app.Window)
 	w.Option(
 		app.Title(appName),
-		app.Size(unit.Dp(400), unit.Dp(640)),
-		app.MinSize(unit.Dp(400), unit.Dp(640)),
+		app.Size(unit.Dp(420), unit.Dp(640)),
+		app.MinSize(unit.Dp(420), unit.Dp(640)),
 	)
 	var ops op.Ops
 	u := initUI(loadConfig())
@@ -333,17 +334,29 @@ func (u *uiState) drawHeader(gtx layout.Context, th *material.Theme) layout.Dime
 					return layout.Dimensions{}
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					for u.btnNavImport.Clicked(gtx) {
-						u.handleQuickImport()
+					for u.btnNavClipboard.Clicked(gtx) {
+						u.importFromClipboard()
 					}
-					b := material.Button(th, &u.btnNavImport, "Import")
+					b := material.Button(th, &u.btnNavClipboard, "Clipboard")
 					b.Background = color.NRGBA{R: 22, G: 27, B: 34, A: 255}
 					b.Color = color.NRGBA{R: 201, G: 209, B: 217, A: 255}
 					b.CornerRadius = unit.Dp(6)
-					b.TextSize = unit.Sp(12)
+					b.TextSize = unit.Sp(11)
 					return b.Layout(gtx)
 				}),
-				layout.Rigid(layout.Spacer{Width: unit.Dp(6)}.Layout),
+				layout.Rigid(layout.Spacer{Width: unit.Dp(5)}.Layout),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					for u.btnNavFile.Clicked(gtx) {
+						u.importFromFile()
+					}
+					b := material.Button(th, &u.btnNavFile, "File")
+					b.Background = color.NRGBA{R: 22, G: 27, B: 34, A: 255}
+					b.Color = color.NRGBA{R: 201, G: 209, B: 217, A: 255}
+					b.CornerRadius = unit.Dp(6)
+					b.TextSize = unit.Sp(11)
+					return b.Layout(gtx)
+				}),
+				layout.Rigid(layout.Spacer{Width: unit.Dp(5)}.Layout),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					for u.btnNavProfiles.Clicked(gtx) {
 						u.screen = screenProfiles
@@ -352,10 +365,10 @@ func (u *uiState) drawHeader(gtx layout.Context, th *material.Theme) layout.Dime
 					b.Background = color.NRGBA{R: 22, G: 27, B: 34, A: 255}
 					b.Color = color.NRGBA{R: 201, G: 209, B: 217, A: 255}
 					b.CornerRadius = unit.Dp(6)
-					b.TextSize = unit.Sp(12)
+					b.TextSize = unit.Sp(11)
 					return b.Layout(gtx)
 				}),
-				layout.Rigid(layout.Spacer{Width: unit.Dp(6)}.Layout),
+				layout.Rigid(layout.Spacer{Width: unit.Dp(5)}.Layout),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					for u.btnNavSettings.Clicked(gtx) {
 						u.openSettingsView()
@@ -364,7 +377,7 @@ func (u *uiState) drawHeader(gtx layout.Context, th *material.Theme) layout.Dime
 					b.Background = color.NRGBA{R: 22, G: 27, B: 34, A: 255}
 					b.Color = color.NRGBA{R: 201, G: 209, B: 217, A: 255}
 					b.CornerRadius = unit.Dp(6)
-					b.TextSize = unit.Sp(12)
+					b.TextSize = unit.Sp(11)
 					return b.Layout(gtx)
 				}),
 			)
@@ -825,15 +838,23 @@ func (u *uiState) deleteProfile(id string) {
 	u.status = "Profil berhasil dihapus."
 }
 
-func (u *uiState) handleQuickImport() {
-	clip := readClipboard()
-	if clip != "" && strings.HasPrefix(clip, "vless://") {
-		u.importRawURI(clip)
+func (u *uiState) importFromClipboard() {
+	clip := strings.TrimSpace(readClipboard())
+	if clip == "" || !strings.Contains(clip, "vless://") {
+		u.status = "GAGAL: clipboard kosong atau bukan URI vless://"
 		return
 	}
+	idx := strings.Index(clip, "vless://")
+	clip = clip[idx:]
+	if end := strings.IndexAny(clip, " \r\n	"); end != -1 {
+		clip = clip[:end]
+	}
+	u.importRawURI(clip)
+}
+
+func (u *uiState) importFromFile() {
 	filePath, err := chooseImportFile()
 	if err != nil || filePath == "" {
-		u.status = "GAGAL: tidak ada URI di clipboard atau file."
 		return
 	}
 	raw, err := os.ReadFile(filePath)
@@ -841,7 +862,17 @@ func (u *uiState) handleQuickImport() {
 		u.status = "GAGAL: file tidak bisa dibaca."
 		return
 	}
-	u.importRawURI(string(raw))
+	text := strings.TrimSpace(string(raw))
+	idx := strings.Index(text, "vless://")
+	if idx == -1 {
+		u.status = "GAGAL: file tidak berisi konfigurasi vless://"
+		return
+	}
+	text = text[idx:]
+	if end := strings.IndexAny(text, " \r\n	"); end != -1 {
+		text = text[:end]
+	}
+	u.importRawURI(text)
 }
 
 func (u *uiState) importRawURI(raw string) {
