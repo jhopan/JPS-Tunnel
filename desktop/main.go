@@ -1,20 +1,33 @@
 package main
 
 import (
+	"bytes"
+	"crypto/rand"
+	"crypto/sha256"
+	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"image"
 	"image/color"
+	"image/png"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"gioui.org/app"
+	"gioui.org/font"
 	"gioui.org/font/gofont"
 	"gioui.org/layout"
 	"gioui.org/op"
+	"gioui.org/op/clip"
 	"gioui.org/op/paint"
 	"gioui.org/text"
 	"gioui.org/unit"
@@ -23,11 +36,26 @@ import (
 )
 
 const (
-	appName = "JPS Tunnel"
-	version = "0.1.0"
+	appName        = "JPS Tunnel"
+	appVersion     = "1.4.1"
+	defaultPingURL = "http://connectivitycheck.gstatic.com/generate_204"
 )
 
-type settings struct {
+//go:embed assets/app_icon.png
+var keyIconPNG []byte
+
+var keyImage = loadKeyImage()
+
+func loadKeyImage() image.Image {
+	img, err := png.Decode(bytes.NewReader(keyIconPNG))
+	if err != nil {
+		return image.NewRGBA(image.Rect(0, 0, 1, 1))
+	}
+	return img
+}
+
+type profile struct {
+	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Address string `json:"address"`
 	Port    string `json:"port"`
@@ -37,12 +65,62 @@ type settings struct {
 	Host    string `json:"host"`
 }
 
-type ui struct {
-	name, address, port, uuid, path, sni, host widget.Editor
-	connect                                    widget.Clickable
-	status                                     string
-	cmd                                        *exec.Cmd
-	mu                                         sync.Mutex
+type configData struct {
+	Profiles       []profile `json:"profiles"`
+	ActiveID       string    `json:"active_id"`
+	HTTPPing       bool      `json:"http_ping"`
+	PingInterval   int       `json:"ping_interval"`
+	PingURL        string    `json:"ping_url"`
+	InstallationID string    `json:"installation_id"`
+}
+
+type currentScreen int
+
+const (
+	screenMain currentScreen = iota
+	screenProfiles
+	screenEdit
+	screenSettings
+)
+
+type uiState struct {
+	data   configData
+	screen currentScreen
+	editID string
+	status string
+	pingMs string
+
+	cmd      *exec.Cmd
+	mu       sync.Mutex
+	stopPing chan struct{}
+
+	btnConnect       widget.Clickable
+	btnDisconnect    widget.Clickable
+	btnNavImport     widget.Clickable
+	btnNavProfiles   widget.Clickable
+	btnNavSettings   widget.Clickable
+	btnBack          widget.Clickable
+	btnAddProfile    widget.Clickable
+	btnSaveProfile   widget.Clickable
+	btnCancelProfile widget.Clickable
+	btnSaveSettings  widget.Clickable
+	btnCopyHWID      widget.Clickable
+
+	selectButtons []widget.Clickable
+	editButtons   []widget.Clickable
+	deleteButtons []widget.Clickable
+
+	cbPingEnabled widget.Bool
+
+	edName     widget.Editor
+	edAddress  widget.Editor
+	edPort     widget.Editor
+	edUUID     widget.Editor
+	edPath     widget.Editor
+	edSNI      widget.Editor
+	edHost     widget.Editor
+	edInterval widget.Editor
+	edPingURL  widget.Editor
 }
 
 func main() {
@@ -56,165 +134,818 @@ func main() {
 
 func run() {
 	w := new(app.Window)
-	w.Option(app.Title(appName), app.Size(unit.Dp(430), unit.Dp(650)), app.MinSize(unit.Dp(430), unit.Dp(650)))
+	w.Option(
+		app.Title(appName),
+		app.Size(unit.Dp(400), unit.Dp(640)),
+		app.MinSize(unit.Dp(400), unit.Dp(640)),
+	)
 	var ops op.Ops
-	u := newUI(loadSettings())
+	u := initUI(loadConfig())
 	for {
 		switch e := w.Event().(type) {
 		case app.DestroyEvent:
 			u.stop()
 			return
 		case app.FrameEvent:
+			setWindowDarkMode()
 			gtx := app.NewContext(&ops, e)
-			u.layout(gtx)
+			u.draw(gtx)
 			e.Frame(gtx.Ops)
 		}
 	}
 }
 
-func newUI(s settings) *ui {
-	u := &ui{status: "Disconnected"}
-	for _, ed := range []*widget.Editor{&u.name, &u.address, &u.port, &u.uuid, &u.path, &u.sni, &u.host} {
-		ed.SingleLine = true
-		ed.Submit = true
+func initUI(cfg configData) *uiState {
+	if cfg.InstallationID == "" {
+		cfg.InstallationID = newID()
 	}
-	u.name.SetText(s.Name)
-	u.address.SetText(s.Address)
-	u.port.SetText(s.Port)
-	u.uuid.SetText(s.UUID)
-	u.path.SetText(s.Path)
-	u.sni.SetText(s.SNI)
-	u.host.SetText(s.Host)
+	if cfg.PingInterval < 1 {
+		cfg.PingInterval = 3
+	}
+	if cfg.PingURL == "" {
+		cfg.PingURL = defaultPingURL
+	}
+	if len(cfg.Profiles) == 0 {
+		cfg.Profiles = []profile{{
+			ID:      newID(),
+			Name:    "Default",
+			Address: "",
+			Port:    "443",
+			UUID:    "",
+			Path:    "/vless",
+			SNI:     "",
+			Host:    "",
+		}}
+		cfg.ActiveID = cfg.Profiles[0].ID
+	}
+	if cfg.ActiveID == "" {
+		cfg.ActiveID = cfg.Profiles[0].ID
+	}
+
+	u := &uiState{
+		data:   cfg,
+		screen: screenMain,
+		status: "Disconnected",
+		pingMs: "-",
+	}
+
+	for _, ed := range []*widget.Editor{
+		&u.edName, &u.edAddress, &u.edPort, &u.edUUID, &u.edPath,
+		&u.edSNI, &u.edHost, &u.edInterval, &u.edPingURL,
+	} {
+		ed.SingleLine = true
+	}
+	saveConfig(cfg)
 	return u
 }
 
-func (u *ui) layout(gtx layout.Context) layout.Dimensions {
+func uiTheme() *material.Theme {
 	th := material.NewTheme()
-	th.Shaper = textShaper()
+	th.Shaper = text.NewShaper(text.WithCollection(gofont.Collection()))
 	th.Palette = material.Palette{
-		Bg:         color.NRGBA{R: 0x12, G: 0x14, B: 0x18, A: 0xff},
-		Fg:         color.NRGBA{R: 0xf3, G: 0xf5, B: 0xf7, A: 0xff},
-		ContrastBg: color.NRGBA{R: 0x1f, G: 0xb8, B: 0x68, A: 0xff},
-		ContrastFg: color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff},
+		Bg:         color.NRGBA{R: 14, G: 17, B: 23, A: 255},    // #0e1117
+		Fg:         color.NRGBA{R: 240, G: 246, B: 252, A: 255}, // #f0f6fc
+		ContrastBg: color.NRGBA{R: 16, G: 185, B: 129, A: 255},  // #10b981
+		ContrastFg: color.NRGBA{R: 255, G: 255, B: 255, A: 255},
 	}
-	paint.Fill(gtx.Ops, th.Palette.Bg)
+	return th
+}
 
-	inset := layout.UniformInset(unit.Dp(20))
-	return inset.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
-			layout.Rigid(material.H4(th, appName+" Desktop").Layout),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(2)}.Layout),
-			layout.Rigid(material.Label(th, unit.Sp(13), "v"+version+" • By JhopanStore").Layout),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(18)}.Layout),
-			layout.Rigid(field(th, &u.name, "Nama profil").Layout),
-			layout.Rigid(field(th, &u.address, "Address / server").Layout),
-			layout.Rigid(field(th, &u.port, "Port").Layout),
-			layout.Rigid(field(th, &u.uuid, "UUID").Layout),
-			layout.Rigid(field(th, &u.path, "WebSocket path").Layout),
-			layout.Rigid(field(th, &u.sni, "SNI").Layout),
-			layout.Rigid(field(th, &u.host, "Host header").Layout),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				label := "CONNECT"
-				if u.connected() {
-					label = "DISCONNECT"
-				}
-				for u.connect.Clicked(gtx) {
-					if u.connected() {
-						u.stop()
-					} else {
-						u.start()
-					}
-				}
-				button := material.Button(th, &u.connect, label)
-				button.Background = th.Palette.ContrastBg
-				return button.Layout(gtx)
+func card(gtx layout.Context, bg, border color.NRGBA, r unit.Dp, w layout.Widget) layout.Dimensions {
+	return widget.Border{
+		Color:        border,
+		CornerRadius: r,
+		Width:        unit.Dp(1),
+	}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return layout.Stack{}.Layout(gtx,
+			layout.Expanded(func(gtx layout.Context) layout.Dimensions {
+				rr := gtx.Dp(r)
+				rect := image.Rectangle{Max: gtx.Constraints.Min}
+				paint.FillShape(gtx.Ops, bg, clip.UniformRRect(rect, rr).Op(gtx.Ops))
+				return layout.Dimensions{Size: gtx.Constraints.Min}
 			}),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(14)}.Layout),
-			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				label := material.Label(th, unit.Sp(14), u.status)
-				if u.connected() {
-					label.Color = color.NRGBA{R: 0x4d, G: 0xda, B: 0x8a, A: 0xff}
-				} else if strings.HasPrefix(u.status, "GAGAL:") {
-					label.Color = color.NRGBA{R: 0xff, G: 0x72, B: 0x72, A: 0xff}
-				}
-				return label.Layout(gtx)
+			layout.Stacked(func(gtx layout.Context) layout.Dimensions {
+				return layout.UniformInset(unit.Dp(10)).Layout(gtx, w)
 			}),
 		)
 	})
 }
 
-type fieldWidget struct {
+func divider(gtx layout.Context, c color.NRGBA) layout.Dimensions {
+	d := image.Pt(gtx.Constraints.Max.X, gtx.Dp(unit.Dp(1)))
+	paint.FillShape(gtx.Ops, c, clip.Rect{Max: d}.Op())
+	return layout.Dimensions{Size: d}
+}
+
+func (u *uiState) draw(gtx layout.Context) layout.Dimensions {
+	th := uiTheme()
+	paint.Fill(gtx.Ops, th.Palette.Bg)
+
+	return layout.UniformInset(unit.Dp(16)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		switch u.screen {
+		case screenProfiles:
+			return u.drawProfilesScreen(gtx, th)
+		case screenEdit:
+			return u.drawEditScreen(gtx, th)
+		case screenSettings:
+			return u.drawSettingsScreen(gtx, th)
+		default:
+			return u.drawMainScreen(gtx, th)
+		}
+	})
+}
+
+func (u *uiState) drawMainScreen(gtx layout.Context, th *material.Theme) layout.Dimensions {
+	p := u.getActiveProfile()
+	addressText := "Belum dikonfigurasi"
+	uuidText := "-"
+	profileName := "Default"
+	if p != nil {
+		profileName = p.Name
+		if p.Address != "" {
+			addressText = p.Address + ":" + p.Port
+		}
+		if p.UUID != "" {
+			uuidText = p.UUID
+		}
+	}
+
+	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return u.drawHeader(gtx, th)
+		}),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(20)}.Layout),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				gtx.Constraints = layout.Exact(image.Pt(gtx.Dp(unit.Dp(80)), gtx.Dp(unit.Dp(80))))
+				return widget.Image{Src: paint.NewImageOp(keyImage), Fit: widget.Contain}.Layout(gtx)
+			})
+		}),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(22)}.Layout),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return u.drawActionButtons(gtx, th)
+		}),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(24)}.Layout),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			l := material.Label(th, unit.Sp(15), "Account Info")
+			l.Font.Weight = font.Bold
+			l.Color = color.NRGBA{R: 240, G: 246, B: 252, A: 255}
+			return l.Layout(gtx)
+		}),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return infoCard(gtx, th, "Profile / Server", profileName+" • "+addressText)
+		}),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(8)}.Layout),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return infoCard(gtx, th, "Account UUID", uuidText)
+		}),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(20)}.Layout),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			l := material.Label(th, unit.Sp(15), "Network Status")
+			l.Font.Weight = font.Bold
+			l.Color = color.NRGBA{R: 240, G: 246, B: 252, A: 255}
+			return l.Layout(gtx)
+		}),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return u.drawStatusCard(gtx, th)
+		}),
+	)
+}
+
+func (u *uiState) drawHeader(gtx layout.Context, th *material.Theme) layout.Dimensions {
+	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					gtx.Constraints = layout.Exact(image.Pt(gtx.Dp(unit.Dp(26)), gtx.Dp(unit.Dp(26))))
+					return widget.Image{Src: paint.NewImageOp(keyImage), Fit: widget.Contain}.Layout(gtx)
+				}),
+				layout.Rigid(layout.Spacer{Width: unit.Dp(8)}.Layout),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					l := material.Label(th, unit.Sp(16), appName)
+					l.Font.Weight = font.Bold
+					l.Color = color.NRGBA{R: 240, G: 246, B: 252, A: 255}
+					return l.Layout(gtx)
+				}),
+				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+					return layout.Dimensions{}
+				}),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					for u.btnNavImport.Clicked(gtx) {
+						u.handleQuickImport()
+					}
+					b := material.Button(th, &u.btnNavImport, "Import")
+					b.Background = color.NRGBA{R: 22, G: 27, B: 34, A: 255}
+					b.Color = color.NRGBA{R: 201, G: 209, B: 217, A: 255}
+					b.CornerRadius = unit.Dp(6)
+					b.TextSize = unit.Sp(12)
+					return b.Layout(gtx)
+				}),
+				layout.Rigid(layout.Spacer{Width: unit.Dp(6)}.Layout),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					for u.btnNavProfiles.Clicked(gtx) {
+						u.screen = screenProfiles
+					}
+					b := material.Button(th, &u.btnNavProfiles, "Profil")
+					b.Background = color.NRGBA{R: 22, G: 27, B: 34, A: 255}
+					b.Color = color.NRGBA{R: 201, G: 209, B: 217, A: 255}
+					b.CornerRadius = unit.Dp(6)
+					b.TextSize = unit.Sp(12)
+					return b.Layout(gtx)
+				}),
+				layout.Rigid(layout.Spacer{Width: unit.Dp(6)}.Layout),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					for u.btnNavSettings.Clicked(gtx) {
+						u.openSettingsView()
+					}
+					b := material.Button(th, &u.btnNavSettings, "Pengaturan")
+					b.Background = color.NRGBA{R: 22, G: 27, B: 34, A: 255}
+					b.Color = color.NRGBA{R: 201, G: 209, B: 217, A: 255}
+					b.CornerRadius = unit.Dp(6)
+					b.TextSize = unit.Sp(12)
+					return b.Layout(gtx)
+				}),
+			)
+		}),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return divider(gtx, color.NRGBA{R: 33, G: 38, B: 45, A: 255})
+		}),
+	)
+}
+
+func (u *uiState) drawActionButtons(gtx layout.Context, th *material.Theme) layout.Dimensions {
+	isConnected := u.connected()
+	return layout.Flex{Axis: layout.Horizontal, Spacing: layout.SpaceBetween}.Layout(gtx,
+		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+			for u.btnConnect.Clicked(gtx) {
+				if !isConnected {
+					u.start()
+				}
+			}
+			b := material.Button(th, &u.btnConnect, "▶ Connect")
+			if isConnected {
+				b.Background = color.NRGBA{R: 22, G: 27, B: 34, A: 255}
+				b.Color = color.NRGBA{R: 72, G: 79, B: 88, A: 255}
+			} else {
+				b.Background = color.NRGBA{R: 16, G: 185, B: 129, A: 255}
+				b.Color = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
+			}
+			b.CornerRadius = unit.Dp(8)
+			b.TextSize = unit.Sp(14)
+			return b.Layout(gtx)
+		}),
+		layout.Rigid(layout.Spacer{Width: unit.Dp(12)}.Layout),
+		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+			for u.btnDisconnect.Clicked(gtx) {
+				if isConnected {
+					u.stop()
+				}
+			}
+			b := material.Button(th, &u.btnDisconnect, "⏹ Disconnect")
+			if isConnected {
+				b.Background = color.NRGBA{R: 239, G: 68, B: 68, A: 255}
+				b.Color = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
+			} else {
+				b.Background = color.NRGBA{R: 22, G: 27, B: 34, A: 255}
+				b.Color = color.NRGBA{R: 72, G: 79, B: 88, A: 255}
+			}
+			b.CornerRadius = unit.Dp(8)
+			b.TextSize = unit.Sp(14)
+			return b.Layout(gtx)
+		}),
+	)
+}
+
+func infoCard(gtx layout.Context, th *material.Theme, label, value string) layout.Dimensions {
+	return card(gtx, color.NRGBA{R: 22, G: 27, B: 34, A: 255}, color.NRGBA{R: 48, G: 54, B: 61, A: 255}, unit.Dp(6), func(gtx layout.Context) layout.Dimensions {
+		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				l := material.Label(th, unit.Sp(11), label)
+				l.Color = color.NRGBA{R: 139, G: 148, B: 158, A: 255}
+				return l.Layout(gtx)
+			}),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(4)}.Layout),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				l := material.Label(th, unit.Sp(13), value)
+				l.Color = color.NRGBA{R: 240, G: 246, B: 252, A: 255}
+				return l.Layout(gtx)
+			}),
+		)
+	})
+}
+
+func (u *uiState) drawStatusCard(gtx layout.Context, th *material.Theme) layout.Dimensions {
+	isConnected := u.connected()
+	return card(gtx, color.NRGBA{R: 22, G: 27, B: 34, A: 255}, color.NRGBA{R: 48, G: 54, B: 61, A: 255}, unit.Dp(6), func(gtx layout.Context) layout.Dimensions {
+		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				l := material.Label(th, unit.Sp(14), u.status)
+				l.Font.Weight = font.Bold
+				if isConnected {
+					l.Color = color.NRGBA{R: 16, G: 185, B: 129, A: 255}
+				} else if strings.HasPrefix(u.status, "GAGAL:") {
+					l.Color = color.NRGBA{R: 239, G: 68, B: 68, A: 255}
+				} else {
+					l.Color = color.NRGBA{R: 139, G: 148, B: 158, A: 255}
+				}
+				return l.Layout(gtx)
+			}),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(4)}.Layout),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				pingText := "Ping: " + u.pingMs
+				if !u.data.HTTPPing {
+					pingText = "Ping: Dinonaktifkan"
+				}
+				l := material.Label(th, unit.Sp(12), pingText)
+				l.Color = color.NRGBA{R: 139, G: 148, B: 158, A: 255}
+				return l.Layout(gtx)
+			}),
+		)
+	})
+}
+
+func (u *uiState) drawProfilesScreen(gtx layout.Context, th *material.Theme) layout.Dimensions {
+	u.ensureButtons()
+	children := []layout.FlexChild{
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return u.drawSubHeader(gtx, th, "Daftar Profil")
+		}),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
+	}
+
+	for i := range u.data.Profiles {
+		i := i
+		children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			p := u.data.Profiles[i]
+			for u.selectButtons[i].Clicked(gtx) {
+				u.data.ActiveID = p.ID
+				saveConfig(u.data)
+				u.status = "Profil aktif: " + p.Name
+				u.screen = screenMain
+			}
+			for u.editButtons[i].Clicked(gtx) {
+				u.openEditView(p.ID)
+			}
+			for u.deleteButtons[i].Clicked(gtx) {
+				u.deleteProfile(p.ID)
+			}
+
+			isActive := p.ID == u.data.ActiveID
+			name := p.Name
+			if isActive {
+				name = "● " + name
+			}
+			endpoint := "Belum dikonfigurasi"
+			if p.Address != "" {
+				endpoint = p.Address + ":" + p.Port
+			}
+
+			return layout.Inset{Bottom: unit.Dp(8)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				cardBg := color.NRGBA{R: 22, G: 27, B: 34, A: 255}
+				borderCol := color.NRGBA{R: 48, G: 54, B: 61, A: 255}
+				if isActive {
+					borderCol = color.NRGBA{R: 16, G: 185, B: 129, A: 255}
+				}
+				return card(gtx, cardBg, borderCol, unit.Dp(6), func(gtx layout.Context) layout.Dimensions {
+					return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+						layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+							for u.selectButtons[i].Clicked(gtx) {
+								u.data.ActiveID = p.ID
+								saveConfig(u.data)
+								u.status = "Profil aktif: " + p.Name
+								u.screen = screenMain
+							}
+							return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+								layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+									l := material.Label(th, unit.Sp(14), name)
+									l.Font.Weight = font.Bold
+									if isActive {
+										l.Color = color.NRGBA{R: 16, G: 185, B: 129, A: 255}
+									}
+									return l.Layout(gtx)
+								}),
+								layout.Rigid(layout.Spacer{Height: unit.Dp(2)}.Layout),
+								layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+									l := material.Label(th, unit.Sp(12), endpoint)
+									l.Color = color.NRGBA{R: 139, G: 148, B: 158, A: 255}
+									return l.Layout(gtx)
+								}),
+							)
+						}),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							b := material.Button(th, &u.editButtons[i], "Edit")
+							b.Background = color.NRGBA{R: 33, G: 38, B: 45, A: 255}
+							b.Color = color.NRGBA{R: 201, G: 209, B: 217, A: 255}
+							b.TextSize = unit.Sp(12)
+							b.CornerRadius = unit.Dp(4)
+							return b.Layout(gtx)
+						}),
+						layout.Rigid(layout.Spacer{Width: unit.Dp(6)}.Layout),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							b := material.Button(th, &u.deleteButtons[i], "Hapus")
+							b.Background = color.NRGBA{R: 45, G: 25, B: 25, A: 255}
+							b.Color = color.NRGBA{R: 248, G: 113, B: 113, A: 255}
+							b.TextSize = unit.Sp(12)
+							b.CornerRadius = unit.Dp(4)
+							return b.Layout(gtx)
+						}),
+					)
+				})
+			})
+		}))
+	}
+
+	children = append(children,
+		layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			for u.btnAddProfile.Clicked(gtx) {
+				u.openEditView("")
+			}
+			b := material.Button(th, &u.btnAddProfile, "+ Tambah Profil")
+			b.Background = color.NRGBA{R: 16, G: 185, B: 129, A: 255}
+			b.CornerRadius = unit.Dp(6)
+			return b.Layout(gtx)
+		}),
+	)
+
+	return layout.Flex{Axis: layout.Vertical}.Layout(gtx, children...)
+}
+
+func (u *uiState) drawEditScreen(gtx layout.Context, th *material.Theme) layout.Dimensions {
+	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return u.drawSubHeader(gtx, th, "Edit Profil VLESS")
+		}),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
+		layout.Rigid(inputField(th, &u.edName, "Nama Profil").Layout),
+		layout.Rigid(inputField(th, &u.edAddress, "Address / Server").Layout),
+		layout.Rigid(inputField(th, &u.edPort, "Port (misal: 443)").Layout),
+		layout.Rigid(inputField(th, &u.edUUID, "UUID").Layout),
+		layout.Rigid(inputField(th, &u.edPath, "WebSocket Path (misal: /vless)").Layout),
+		layout.Rigid(inputField(th, &u.edSNI, "SNI").Layout),
+		layout.Rigid(inputField(th, &u.edHost, "Host Header").Layout),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(14)}.Layout),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			for u.btnSaveProfile.Clicked(gtx) {
+				u.saveProfileForm()
+			}
+			for u.btnCancelProfile.Clicked(gtx) {
+				u.screen = screenProfiles
+				u.status = "Batal edit profil."
+			}
+			return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
+				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+					b := material.Button(th, &u.btnSaveProfile, "SIMPAN")
+					b.Background = color.NRGBA{R: 16, G: 185, B: 129, A: 255}
+					b.CornerRadius = unit.Dp(6)
+					return b.Layout(gtx)
+				}),
+				layout.Rigid(layout.Spacer{Width: unit.Dp(10)}.Layout),
+				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+					b := material.Button(th, &u.btnCancelProfile, "BATAL")
+					b.Background = color.NRGBA{R: 33, G: 38, B: 45, A: 255}
+					b.CornerRadius = unit.Dp(6)
+					return b.Layout(gtx)
+				}),
+			)
+		}),
+	)
+}
+
+func (u *uiState) drawSettingsScreen(gtx layout.Context, th *material.Theme) layout.Dimensions {
+	hwidStr := makeHWID(u.data.InstallationID)
+	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return u.drawSubHeader(gtx, th, "Pengaturan")
+		}),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(16)}.Layout),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return card(gtx, color.NRGBA{R: 22, G: 27, B: 34, A: 255}, color.NRGBA{R: 48, G: 54, B: 61, A: 255}, unit.Dp(6), func(gtx layout.Context) layout.Dimensions {
+				return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						l := material.Label(th, unit.Sp(11), "Device HWID")
+						l.Color = color.NRGBA{R: 139, G: 148, B: 158, A: 255}
+						return l.Layout(gtx)
+					}),
+					layout.Rigid(layout.Spacer{Height: unit.Dp(4)}.Layout),
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						l := material.Label(th, unit.Sp(13), hwidStr)
+						l.Color = color.NRGBA{R: 0, G: 229, B: 255, A: 255}
+						return l.Layout(gtx)
+					}),
+				)
+			})
+		}),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(16)}.Layout),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			cb := material.CheckBox(th, &u.cbPingEnabled, "HTTP Ping Keep-Alive")
+			cb.Color = color.NRGBA{R: 16, G: 185, B: 129, A: 255}
+			return cb.Layout(gtx)
+		}),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(8)}.Layout),
+		layout.Rigid(inputField(th, &u.edInterval, "Interval Detik (default: 3)").Layout),
+		layout.Rigid(inputField(th, &u.edPingURL, "URL Ping (204 Endpoint)").Layout),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(14)}.Layout),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			for u.btnSaveSettings.Clicked(gtx) {
+				u.saveSettingsForm()
+			}
+			b := material.Button(th, &u.btnSaveSettings, "SIMPAN PENGATURAN")
+			b.Background = color.NRGBA{R: 16, G: 185, B: 129, A: 255}
+			b.CornerRadius = unit.Dp(6)
+			return b.Layout(gtx)
+		}),
+	)
+}
+
+func (u *uiState) drawSubHeader(gtx layout.Context, th *material.Theme, title string) layout.Dimensions {
+	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					for u.btnBack.Clicked(gtx) {
+						u.screen = screenMain
+					}
+					b := material.Button(th, &u.btnBack, "← Kembali")
+					b.Background = color.NRGBA{R: 22, G: 27, B: 34, A: 255}
+					b.Color = color.NRGBA{R: 201, G: 209, B: 217, A: 255}
+					b.TextSize = unit.Sp(12)
+					b.CornerRadius = unit.Dp(4)
+					return b.Layout(gtx)
+				}),
+				layout.Rigid(layout.Spacer{Width: unit.Dp(12)}.Layout),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					l := material.Label(th, unit.Sp(16), title)
+					l.Font.Weight = font.Bold
+					l.Color = color.NRGBA{R: 240, G: 246, B: 252, A: 255}
+					return l.Layout(gtx)
+				}),
+			)
+		}),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return divider(gtx, color.NRGBA{R: 33, G: 38, B: 45, A: 255})
+		}),
+	)
+}
+
+type inputWrapper struct {
 	th    *material.Theme
 	ed    *widget.Editor
 	label string
 }
 
-func field(th *material.Theme, ed *widget.Editor, label string) fieldWidget {
-	return fieldWidget{th: th, ed: ed, label: label}
+func inputField(th *material.Theme, ed *widget.Editor, label string) inputWrapper {
+	return inputWrapper{th: th, ed: ed, label: label}
 }
 
-func (f fieldWidget) Layout(gtx layout.Context) layout.Dimensions {
-	return layout.Inset{Bottom: unit.Dp(7)}.Layout(gtx, material.Editor(f.th, f.ed, f.label).Layout)
+func (iw inputWrapper) Layout(gtx layout.Context) layout.Dimensions {
+	return layout.Inset{Bottom: unit.Dp(8)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return card(gtx, color.NRGBA{R: 22, G: 27, B: 34, A: 255}, color.NRGBA{R: 48, G: 54, B: 61, A: 255}, unit.Dp(6), func(gtx layout.Context) layout.Dimensions {
+			ed := material.Editor(iw.th, iw.ed, iw.label)
+			ed.TextSize = unit.Sp(13)
+			ed.Color = color.NRGBA{R: 240, G: 246, B: 252, A: 255}
+			ed.HintColor = color.NRGBA{R: 110, G: 118, B: 129, A: 255}
+			return ed.Layout(gtx)
+		})
+	})
 }
 
-func textShaper() *text.Shaper { return text.NewShaper(text.WithCollection(gofont.Collection())) }
-
-func (u *ui) values() settings {
-	return settings{
-		Name: strings.TrimSpace(u.name.Text()), Address: strings.TrimSpace(u.address.Text()),
-		Port: strings.TrimSpace(u.port.Text()), UUID: strings.TrimSpace(u.uuid.Text()),
-		Path: strings.TrimSpace(u.path.Text()), SNI: strings.TrimSpace(u.sni.Text()), Host: strings.TrimSpace(u.host.Text()),
+func (u *uiState) ensureButtons() {
+	for len(u.selectButtons) < len(u.data.Profiles) {
+		u.selectButtons = append(u.selectButtons, widget.Clickable{})
+		u.editButtons = append(u.editButtons, widget.Clickable{})
+		u.deleteButtons = append(u.deleteButtons, widget.Clickable{})
 	}
 }
 
-func (u *ui) connected() bool {
+func (u *uiState) getActiveProfile() *profile {
+	for i := range u.data.Profiles {
+		if u.data.Profiles[i].ID == u.data.ActiveID {
+			return &u.data.Profiles[i]
+		}
+	}
+	if len(u.data.Profiles) > 0 {
+		return &u.data.Profiles[0]
+	}
+	return nil
+}
+
+func (u *uiState) openEditView(id string) {
+	u.editID = id
+	var p *profile
+	if id != "" {
+		for i := range u.data.Profiles {
+			if u.data.Profiles[i].ID == id {
+				p = &u.data.Profiles[i]
+				break
+			}
+		}
+	}
+	if p == nil {
+		p = &profile{Port: "443", Path: "/vless"}
+	}
+	u.edName.SetText(p.Name)
+	u.edAddress.SetText(p.Address)
+	u.edPort.SetText(p.Port)
+	u.edUUID.SetText(p.UUID)
+	u.edPath.SetText(p.Path)
+	u.edSNI.SetText(p.SNI)
+	u.edHost.SetText(p.Host)
+	u.screen = screenEdit
+}
+
+func (u *uiState) saveProfileForm() {
+	p := profile{
+		ID:      u.editID,
+		Name:    strings.TrimSpace(u.edName.Text()),
+		Address: strings.TrimSpace(u.edAddress.Text()),
+		Port:    strings.TrimSpace(u.edPort.Text()),
+		UUID:    strings.TrimSpace(u.edUUID.Text()),
+		Path:    strings.TrimSpace(u.edPath.Text()),
+		SNI:     strings.TrimSpace(u.edSNI.Text()),
+		Host:    strings.TrimSpace(u.edHost.Text()),
+	}
+	if p.Name == "" {
+		p.Name = "Profil"
+	}
+	if p.Port == "" {
+		p.Port = "443"
+	}
+	if p.Path == "" {
+		p.Path = "/vless"
+	}
+	if p.Address == "" || p.UUID == "" || p.SNI == "" || p.Host == "" {
+		u.status = "GAGAL: field VLESS belum lengkap."
+		return
+	}
+	if _, err := parsePort(p.Port); err != nil {
+		u.status = "GAGAL: port harus 1 sampai 65535."
+		return
+	}
+	if p.ID == "" {
+		p.ID = newID()
+		u.data.Profiles = append(u.data.Profiles, p)
+		u.data.ActiveID = p.ID
+	} else {
+		for i := range u.data.Profiles {
+			if u.data.Profiles[i].ID == p.ID {
+				u.data.Profiles[i] = p
+				break
+			}
+		}
+	}
+	saveConfig(u.data)
+	u.screen = screenMain
+	u.status = "Profil disimpan: " + p.Name
+}
+
+func (u *uiState) deleteProfile(id string) {
+	if u.connected() {
+		u.status = "GAGAL: putuskan tunnel sebelum hapus profil."
+		return
+	}
+	if len(u.data.Profiles) <= 1 {
+		u.status = "GAGAL: minimal satu profil harus ada."
+		return
+	}
+	for i, p := range u.data.Profiles {
+		if p.ID == id {
+			u.data.Profiles = append(u.data.Profiles[:i], u.data.Profiles[i+1:]...)
+			break
+		}
+	}
+	if u.data.ActiveID == id {
+		u.data.ActiveID = u.data.Profiles[0].ID
+	}
+	saveConfig(u.data)
+	u.status = "Profil berhasil dihapus."
+}
+
+func (u *uiState) handleQuickImport() {
+	clip := readClipboard()
+	if clip != "" && strings.HasPrefix(clip, "vless://") {
+		u.importRawURI(clip)
+		return
+	}
+	filePath, err := chooseImportFile()
+	if err != nil || filePath == "" {
+		u.status = "GAGAL: tidak ada URI di clipboard atau file."
+		return
+	}
+	raw, err := os.ReadFile(filePath)
+	if err != nil {
+		u.status = "GAGAL: file tidak bisa dibaca."
+		return
+	}
+	u.importRawURI(string(raw))
+}
+
+func (u *uiState) importRawURI(raw string) {
+	p, err := parseVLESS(strings.TrimSpace(raw))
+	if err != nil {
+		u.status = "GAGAL: import butuh URI vless:// WS + TLS."
+		return
+	}
+	u.editID = ""
+	u.edName.SetText(p.Name)
+	u.edAddress.SetText(p.Address)
+	u.edPort.SetText(p.Port)
+	u.edUUID.SetText(p.UUID)
+	u.edPath.SetText(p.Path)
+	u.edSNI.SetText(p.SNI)
+	u.edHost.SetText(p.Host)
+	u.screen = screenEdit
+	u.status = "URI valid. Konfirmasi lalu SIMPAN."
+}
+
+func (u *uiState) openSettingsView() {
+	u.cbPingEnabled.Value = u.data.HTTPPing
+	u.edInterval.SetText(strconv.Itoa(u.data.PingInterval))
+	u.edPingURL.SetText(u.data.PingURL)
+	u.screen = screenSettings
+}
+
+func (u *uiState) saveSettingsForm() {
+	n, err := strconv.Atoi(strings.TrimSpace(u.edInterval.Text()))
+	if err != nil || n < 1 {
+		u.status = "GAGAL: interval minimal 1 detik."
+		return
+	}
+	target := strings.TrimSpace(u.edPingURL.Text())
+	if target == "" {
+		target = defaultPingURL
+	}
+	if _, err := url.ParseRequestURI(target); err != nil {
+		u.status = "GAGAL: URL ping tidak valid."
+		return
+	}
+	u.data.HTTPPing = u.cbPingEnabled.Value
+	u.data.PingInterval = n
+	u.data.PingURL = target
+	saveConfig(u.data)
+	u.screen = screenMain
+	u.status = "Pengaturan disimpan."
+}
+
+func (u *uiState) connected() bool {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	return u.cmd != nil && u.cmd.Process != nil
 }
 
-func (u *ui) start() {
-	s := u.values()
-	if s.Address == "" || s.Port == "" || s.UUID == "" || s.Path == "" || s.SNI == "" || s.Host == "" {
-		u.status = "GAGAL: field VLESS belum lengkap."
+func (u *uiState) start() {
+	p := u.getActiveProfile()
+	if p == nil || p.Address == "" || p.UUID == "" {
+		u.status = "GAGAL: profil aktif belum lengkap."
 		return
 	}
-	port, err := parsePort(s.Port)
+	port, err := parsePort(p.Port)
 	if err != nil {
-		u.status = "GAGAL: port harus 1 sampai 65535."
+		u.status = "GAGAL: port server tidak valid."
 		return
 	}
-	core, err := corePath()
+	core, err := getCoreExecutable()
 	if err != nil {
-		u.status = "GAGAL: core Windows tidak ditemukan di folder aplikasi."
+		u.status = "GAGAL: core tidak ditemukan di folder aplikasi."
 		return
 	}
-	config, err := buildConfig(s, port)
+	cfgBytes, err := buildSingboxConfig(*p, port)
 	if err != nil {
-		u.status = "GAGAL: config tidak bisa dibuat."
+		u.status = "GAGAL: pembuatan config sing-box gagal."
 		return
 	}
-	if err := os.MkdirAll(dataDir(), 0700); err != nil {
-		u.status = "GAGAL: folder data tidak bisa dibuat."
+	appDir := appDataDir()
+	if err := os.MkdirAll(appDir, 0700); err != nil {
+		u.status = "GAGAL: folder data aplikasi tidak bisa dibuat."
 		return
 	}
-	if err := os.WriteFile(filepath.Join(dataDir(), "config.json"), config, 0600); err != nil {
-		u.status = "GAGAL: config tidak bisa disimpan."
+	cfgFile := filepath.Join(appDir, "config.json")
+	if err := os.WriteFile(cfgFile, cfgBytes, 0600); err != nil {
+		u.status = "GAGAL: penulisan config.json gagal."
 		return
 	}
-	saveSettings(s)
-	cmd := exec.Command(core, "run", "-c", filepath.Join(dataDir(), "config.json"))
-	cmd.Dir = dataDir()
+
+	cmd := exec.Command(core, "run", "-c", cfgFile)
+	cmd.Dir = appDir
 	setNoConsole(cmd)
 	if err := cmd.Start(); err != nil {
 		u.status = "GAGAL: core gagal start — " + err.Error()
 		return
 	}
+
 	u.mu.Lock()
 	u.cmd = cmd
 	u.status = "Connected"
 	u.mu.Unlock()
+
+	if u.data.HTTPPing {
+		u.startPingLoop()
+	}
+
 	go func() {
 		err := cmd.Wait()
 		u.mu.Lock()
@@ -225,23 +956,85 @@ func (u *ui) start() {
 			} else {
 				u.status = "Disconnected"
 			}
+			u.pingMs = "-"
 		}
 		u.mu.Unlock()
 	}()
 }
 
-func (u *ui) stop() {
+func (u *uiState) stop() {
 	u.mu.Lock()
 	cmd := u.cmd
 	u.cmd = nil
 	u.status = "Disconnected"
+	u.pingMs = "-"
 	u.mu.Unlock()
+
+	u.stopPingLoop()
 	if cmd != nil && cmd.Process != nil {
 		_ = cmd.Process.Kill()
 	}
 }
 
-func dataDir() string {
+func (u *uiState) startPingLoop() {
+	u.stopPingLoop()
+	stop := make(chan struct{})
+	u.stopPing = stop
+	interval := time.Duration(u.data.PingInterval) * time.Second
+
+	go func() {
+		tick := time.NewTicker(interval)
+		defer tick.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-tick.C:
+				u.execPing()
+			}
+		}
+	}()
+}
+
+func (u *uiState) stopPingLoop() {
+	if u.stopPing != nil {
+		close(u.stopPing)
+		u.stopPing = nil
+	}
+}
+
+func (u *uiState) execPing() {
+	proxy, _ := url.Parse("http://127.0.0.1:10808")
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(proxy),
+		},
+	}
+	start := time.Now()
+	req, err := http.NewRequest(http.MethodHead, u.data.PingURL, nil)
+	if err != nil {
+		return
+	}
+	res, err := client.Do(req)
+	duration := time.Since(start)
+	if err == nil {
+		res.Body.Close()
+		u.mu.Lock()
+		if u.cmd != nil {
+			u.pingMs = fmt.Sprintf("%d ms • %d OK", duration.Milliseconds(), res.StatusCode)
+		}
+		u.mu.Unlock()
+	} else {
+		u.mu.Lock()
+		if u.cmd != nil {
+			u.pingMs = "Timeout / Gagal"
+		}
+		u.mu.Unlock()
+	}
+}
+
+func appDataDir() string {
 	d, err := os.UserConfigDir()
 	if err != nil {
 		return "."
@@ -249,66 +1042,153 @@ func dataDir() string {
 	return filepath.Join(d, "JPSTunnel")
 }
 
-func corePath() (string, error) {
+func configFilePath() string {
+	return filepath.Join(appDataDir(), "settings.json")
+}
+
+func loadConfig() configData {
+	b, err := os.ReadFile(configFilePath())
+	if err != nil {
+		return configData{}
+	}
+	var cfg configData
+	if json.Unmarshal(b, &cfg) != nil {
+		return configData{}
+	}
+	return cfg
+}
+
+func saveConfig(cfg configData) {
+	_ = os.MkdirAll(appDataDir(), 0700)
+	b, err := json.MarshalIndent(cfg, "", "  ")
+	if err == nil {
+		_ = os.WriteFile(configFilePath(), b, 0600)
+	}
+}
+
+func getCoreExecutable() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return "", err
 	}
-	path := filepath.Join(filepath.Dir(exe), coreName)
-	info, err := os.Stat(path)
+	p := filepath.Join(filepath.Dir(exe), coreName)
+	info, err := os.Stat(p)
 	if err != nil || info.Size() < 1_000_000 {
-		return "", fmt.Errorf("missing core")
-	}
-	return path, nil
-}
-
-func settingsPath() string { return filepath.Join(dataDir(), "settings.json") }
-
-func loadSettings() settings {
-	data, err := os.ReadFile(settingsPath())
-	if err != nil {
-		return settings{Port: "443", Path: "/vless"}
-	}
-	var s settings
-	if json.Unmarshal(data, &s) != nil {
-		return settings{Port: "443", Path: "/vless"}
-	}
-	return s
-}
-
-func saveSettings(s settings) {
-	if s.Address == "" {
-		return
-	}
-	_ = os.MkdirAll(dataDir(), 0700)
-	data, err := json.Marshal(s)
-	if err == nil {
-		_ = os.WriteFile(settingsPath(), data, 0600)
-	}
-}
-
-func parsePort(value string) (int, error) {
-	var p int
-	if _, err := fmt.Sscanf(value, "%d", &p); err != nil || p < 1 || p > 65535 {
-		return 0, fmt.Errorf("invalid port")
+		return "", fmt.Errorf("core missing")
 	}
 	return p, nil
 }
 
-func buildConfig(s settings, port int) ([]byte, error) {
-	config := map[string]any{
+func parsePort(v string) (int, error) {
+	p, err := strconv.Atoi(v)
+	if err != nil || p < 1 || p > 65535 {
+		return 0, fmt.Errorf("bad port")
+	}
+	return p, nil
+}
+
+func newID() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 36)
+	}
+	return hex.EncodeToString(b)
+}
+
+func makeHWID(id string) string {
+	h := sha256.Sum256([]byte(id))
+	return strings.ToUpper(hex.EncodeToString(h[:]))[:24]
+}
+
+func parseVLESS(raw string) (profile, error) {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "vless" || u.User == nil || u.Hostname() == "" {
+		return profile{}, fmt.Errorf("bad uri")
+	}
+	q := u.Query()
+	if !strings.EqualFold(q.Get("type"), "ws") || !strings.EqualFold(q.Get("security"), "tls") {
+		return profile{}, fmt.Errorf("not ws tls")
+	}
+	port := u.Port()
+	if port == "" {
+		port = "443"
+	}
+	if _, err := parsePort(port); err != nil {
+		return profile{}, err
+	}
+	sni := q.Get("sni")
+	if sni == "" {
+		sni = u.Hostname()
+	}
+	host := q.Get("host")
+	if host == "" {
+		host = sni
+	}
+	path := q.Get("path")
+	if path == "" {
+		path = "/"
+	}
+	name := u.Fragment
+	if name == "" {
+		name = u.Hostname()
+	}
+	return profile{
+		Name:    name,
+		Address: u.Hostname(),
+		Port:    port,
+		UUID:    u.User.Username(),
+		Path:    path,
+		SNI:     sni,
+		Host:    host,
+	}, nil
+}
+
+func buildSingboxConfig(p profile, port int) ([]byte, error) {
+	return json.MarshalIndent(map[string]any{
 		"log": map[string]any{"level": "warn"},
-		"inbounds": []any{map[string]any{
-			"type": "tun", "tag": "tun-in", "interface_name": "jps-tun", "address": []string{"172.19.0.1/30"},
-			"auto_route": true, "strict_route": true, "stack": "gvisor", "mtu": 1280,
-		}},
+		"inbounds": []any{
+			map[string]any{
+				"type":           "tun",
+				"tag":            "tun-in",
+				"interface_name": "jps-tun",
+				"address":        []string{"172.19.0.1/30"},
+				"auto_route":     true,
+				"strict_route":   true,
+				"stack":          "gvisor",
+				"mtu":            1400,
+			},
+			map[string]any{
+				"type":        "mixed",
+				"tag":         "mixed-in",
+				"listen":      "127.0.0.1",
+				"listen_port": 10808,
+			},
+		},
 		"outbounds": []any{
-			map[string]any{"type": "vless", "tag": "proxy", "server": s.Address, "server_port": port, "uuid": s.UUID,
-				"tls":       map[string]any{"enabled": true, "server_name": s.SNI, "insecure": true},
-				"transport": map[string]any{"type": "ws", "path": s.Path, "headers": map[string]string{"Host": s.Host}}},
+			map[string]any{
+				"type":        "vless",
+				"tag":         "proxy",
+				"server":      p.Address,
+				"server_port": port,
+				"uuid":        p.UUID,
+				"tls": map[string]any{
+					"enabled":     true,
+					"server_name": p.SNI,
+					"insecure":    true,
+				},
+				"transport": map[string]any{
+					"type": "ws",
+					"path": p.Path,
+					"headers": map[string]string{
+						"Host": p.Host,
+					},
+				},
+			},
 			map[string]any{"type": "direct", "tag": "direct"},
 		},
-		"route": map[string]any{"auto_detect_interface": true, "final": "proxy"},
-	}
-	return json.MarshalIndent(config, "", "  ")
+		"route": map[string]any{
+			"auto_detect_interface": true,
+			"final":                 "proxy",
+		},
+	}, "", "  ")
 }

@@ -14,3 +14,7 @@ ui-realme5.png
 # Keep app logo
 !app/src/main/res/drawable/logo_jhopanstore.png
 !app/src/main/res/drawable-nodpi/logo_jhopanstore.png
+!desktop/assets/
+desktop/bin/
+desktop/output/
+desktop/*.syso
