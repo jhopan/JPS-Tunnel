@@ -11,7 +11,6 @@ import (
 	"image"
 	"image/color"
 	"image/png"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -1187,35 +1186,40 @@ func parseVLESS(raw string) (profile, error) {
 func buildSingboxConfig(p profile, port int) ([]byte, error) {
 	appDir := appDataDir()
 
-	// Resolve server IP for anti-routing-loop rule.
-	// If hostname not resolvable, skip the per-server route rule — still works but
-	// may loop on systems where the TUN route beats the WinSock lookup.
-	serverCIDRs := []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}
-	if ips, err := net.LookupHost(p.Address); err == nil && len(ips) > 0 {
-		serverCIDRs = append(serverCIDRs, ips[0]+"/32")
-	}
+	// Route server hostname direct — prevents routing loop without needing
+	// to resolve its IP manually. Works for any hostname (no per-VPS IP list).
+	// If server is an IP literal, "domain" rule is harmless; the ip_cidr LAN
+	// rule below still keeps direct traffic off the tunnel.
+	serverDomain := p.Address
 
 	return json.MarshalIndent(map[string]any{
 		"log": map[string]any{"level": "warn"},
 		"dns": map[string]any{
 			"servers": []any{
-				// DNS through VPN tunnel — prevents leaks
+				// Primary: Cloudflare through tunnel
 				map[string]any{
 					"tag":      "dns-tunnel",
+					"address":  "1.1.1.1",
+					"strategy": "prefer_ipv4",
+					"detour":   "proxy",
+				},
+				// Backup: Google through tunnel
+				map[string]any{
+					"tag":      "dns-backup",
 					"address":  "8.8.8.8",
 					"strategy": "prefer_ipv4",
 					"detour":   "proxy",
 				},
-				// Local DNS only for resolving the VPS server itself (before tunnel is up)
+				// Local: only to resolve VPS hostname before tunnel is up
 				map[string]any{
 					"tag":     "dns-local",
 					"address": "local",
 				},
 			},
 			"rules": []any{
-				// VPS server hostname goes through local DNS (to get its IP for the route rule)
+				// VPS server domain resolved locally (needed before tunnel is established)
 				map[string]any{
-					"domain": []string{p.Address},
+					"domain": []string{serverDomain},
 					"server": "dns-local",
 				},
 			},
@@ -1266,10 +1270,15 @@ func buildSingboxConfig(p profile, port int) ([]byte, error) {
 		},
 		"route": map[string]any{
 			"auto_detect_interface": true,
-			// Route VPS IP + LAN ranges as direct — prevents routing loop
 			"rules": []any{
+				// VPS domain → direct (anti-routing-loop, works for any VPS hostname)
 				map[string]any{
-					"ip_cidr":  serverCIDRs,
+					"domain":   []string{serverDomain},
+					"outbound": "direct",
+				},
+				// LAN ranges → direct
+				map[string]any{
+					"ip_cidr":  []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"},
 					"outbound": "direct",
 				},
 			},
