@@ -1,0 +1,43 @@
+name: desktop-ci
+
+on:
+  push:
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/desktop-ci.yml'
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/desktop-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: windows-amd64, runner: windows-latest, output: JPS-Tunnel-Desktop.exe, flags: '-H windowsgui' }
+          - { name: linux-amd64, runner: ubuntu-latest, output: jps-tunnel-desktop, flags: '' }
+          - { name: macos-arm64, runner: macos-latest, output: JPS-Tunnel-Desktop, flags: '' }
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+      - name: Test
+        run: go test ./...
+      - name: Build
+        shell: bash
+        run: go build -ldflags="-s -w ${{ matrix.flags }}" -o "${{ matrix.output }}" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.name }}
+          path: desktop/${{ matrix.output }}
+          if-no-files-found: error
