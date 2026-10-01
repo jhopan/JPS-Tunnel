@@ -11,6 +11,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -1185,43 +1186,53 @@ func parseVLESS(raw string) (profile, error) {
 
 func buildSingboxConfig(p profile, port int) ([]byte, error) {
 	appDir := appDataDir()
+
+	// Resolve server IP for anti-routing-loop rule.
+	// If hostname not resolvable, skip the per-server route rule — still works but
+	// may loop on systems where the TUN route beats the WinSock lookup.
+	serverCIDRs := []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}
+	if ips, err := net.LookupHost(p.Address); err == nil && len(ips) > 0 {
+		serverCIDRs = append(serverCIDRs, ips[0]+"/32")
+	}
+
 	return json.MarshalIndent(map[string]any{
 		"log": map[string]any{"level": "warn"},
 		"dns": map[string]any{
 			"servers": []any{
+				// DNS through VPN tunnel — prevents leaks
 				map[string]any{
-					"tag":      "dns-main",
-					"address":  "1.1.1.1",
-					"strategy": "prefer_ipv4",
-				},
-				map[string]any{
-					"tag":      "dns-backup",
+					"tag":      "dns-tunnel",
 					"address":  "8.8.8.8",
 					"strategy": "prefer_ipv4",
+					"detour":   "proxy",
 				},
+				// Local DNS only for resolving the VPS server itself (before tunnel is up)
 				map[string]any{
 					"tag":     "dns-local",
 					"address": "local",
 				},
 			},
 			"rules": []any{
+				// VPS server hostname goes through local DNS (to get its IP for the route rule)
 				map[string]any{
-					"outbound": "direct",
-					"server":   "dns-local",
+					"domain": []string{p.Address},
+					"server": "dns-local",
 				},
 			},
+			"final":             "dns-tunnel",
+			"strategy":          "prefer_ipv4",
+			"independent_cache": true,
 		},
 		"inbounds": []any{
 			map[string]any{
-				"type":                  "tun",
-				"tag":                   "tun-in",
-				"interface_name":        "jps-tun",
-				"address":               []string{"172.19.0.1/30"},
-				"auto_route":            true,
-				"strict_route":          true,
-				"stack":                 "gvisor",
-				"mtu":                   1400,
-				"route_exclude_address": []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"},
+				"type":           "tun",
+				"tag":            "tun-in",
+				"interface_name": "jps-tun",
+				"address":        []string{"172.19.0.1/30"},
+				"auto_route":     true,
+				"strict_route":   false, // false on Windows: avoids WFP over-block
+				"stack":          "gvisor",
+				"mtu":            1400,
 			},
 			map[string]any{
 				"type":        "mixed",
@@ -1252,15 +1263,14 @@ func buildSingboxConfig(p profile, port int) ([]byte, error) {
 				},
 			},
 			map[string]any{"type": "direct", "tag": "direct"},
-			map[string]any{"type": "block", "tag": "block"},
-			map[string]any{"type": "dns", "tag": "dns-out"},
 		},
 		"route": map[string]any{
 			"auto_detect_interface": true,
+			// Route VPS IP + LAN ranges as direct — prevents routing loop
 			"rules": []any{
 				map[string]any{
-					"protocol": "dns",
-					"outbound": "dns-out",
+					"ip_cidr":  serverCIDRs,
+					"outbound": "direct",
 				},
 			},
 			"final": "proxy",
