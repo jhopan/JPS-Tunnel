@@ -563,14 +563,14 @@ func (u *uiState) drawEditScreen(gtx layout.Context, th *material.Theme) layout.
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return u.drawSubHeader(gtx, th, "Edit Profil VLESS")
 		}),
-		layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
-		layout.Rigid(inputField(th, &u.edName, "Nama Profil").Layout),
-		layout.Rigid(inputField(th, &u.edAddress, "Address / Server").Layout),
-		layout.Rigid(inputField(th, &u.edPort, "Port (misal: 443)").Layout),
-		layout.Rigid(inputField(th, &u.edUUID, "UUID").Layout),
-		layout.Rigid(inputField(th, &u.edPath, "WebSocket Path (misal: /vless)").Layout),
-		layout.Rigid(inputField(th, &u.edSNI, "SNI").Layout),
-		layout.Rigid(inputField(th, &u.edHost, "Host Header").Layout),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
+		layout.Rigid(labeledField(gtx, th, "Nama Profil", "Nama tampilan profil ini", inputField(th, &u.edName, "contoh: Server Utama")).Layout),
+		layout.Rigid(labeledField(gtx, th, "Target Server", "Hostname atau IP server VPS", inputField(th, &u.edAddress, "contoh: ava.game.naver.com")).Layout),
+		layout.Rigid(labeledField(gtx, th, "Port", "Port server (biasanya 443)", inputField(th, &u.edPort, "443")).Layout),
+		layout.Rigid(labeledField(gtx, th, "Account UUID", "UUID akun VLESS dari server", inputField(th, &u.edUUID, "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx")).Layout),
+		layout.Rigid(labeledField(gtx, th, "WebSocket Path", "Path WebSocket dari server", inputField(th, &u.edPath, "/vless")).Layout),
+		layout.Rigid(labeledField(gtx, th, "SNI (Server Name)", "Server Name Indication untuk TLS", inputField(th, &u.edSNI, "contoh: support.zoom.us")).Layout),
+		layout.Rigid(labeledField(gtx, th, "Host Header", "Header Host untuk WebSocket", inputField(th, &u.edHost, "sama dengan SNI")).Layout),
 		layout.Rigid(layout.Spacer{Height: unit.Dp(14)}.Layout),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			for u.btnSaveProfile.Clicked(gtx) {
@@ -695,6 +695,41 @@ func (iw inputWrapper) Layout(gtx layout.Context) layout.Dimensions {
 			ed.HintColor = color.NRGBA{R: 110, G: 118, B: 129, A: 255}
 			return ed.Layout(gtx)
 		})
+	})
+}
+
+// labeledField wraps an input field with a bold label on top and a light hint below.
+type labeledWrapper struct {
+	th    *material.Theme
+	name  string
+	hint  string
+	inner inputWrapper
+}
+
+func labeledField(_ layout.Context, th *material.Theme, name, hint string, inner inputWrapper) labeledWrapper {
+	return labeledWrapper{th: th, name: name, hint: hint, inner: inner}
+}
+
+func (lw labeledWrapper) Layout(gtx layout.Context) layout.Dimensions {
+	return layout.Inset{Bottom: unit.Dp(4)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				l := material.Label(lw.th, unit.Sp(12), lw.name)
+				l.Font.Weight = font.Bold
+				l.Color = color.NRGBA{R: 201, G: 209, B: 217, A: 255}
+				return l.Layout(gtx)
+			}),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(3)}.Layout),
+			layout.Rigid(lw.inner.Layout),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				if lw.hint == "" {
+					return layout.Dimensions{}
+				}
+				l := material.Label(lw.th, unit.Sp(11), lw.hint)
+				l.Color = color.NRGBA{R: 110, G: 118, B: 129, A: 255}
+				return layout.Inset{Bottom: unit.Dp(4)}.Layout(gtx, l.Layout)
+			}),
+		)
 	})
 }
 
