@@ -564,13 +564,13 @@ func (u *uiState) drawEditScreen(gtx layout.Context, th *material.Theme) layout.
 			return u.drawSubHeader(gtx, th, "Edit Profil VLESS")
 		}),
 		layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
-		layout.Rigid(labeledField(gtx, th, "Nama Profil", "Nama tampilan profil ini", inputField(th, &u.edName, "contoh: Server Utama")).Layout),
-		layout.Rigid(labeledField(gtx, th, "Target Server", "Hostname atau IP server VPS", inputField(th, &u.edAddress, "contoh: ava.game.naver.com")).Layout),
-		layout.Rigid(labeledField(gtx, th, "Port", "Port server (biasanya 443)", inputField(th, &u.edPort, "443")).Layout),
-		layout.Rigid(labeledField(gtx, th, "Account UUID", "UUID akun VLESS dari server", inputField(th, &u.edUUID, "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx")).Layout),
-		layout.Rigid(labeledField(gtx, th, "WebSocket Path", "Path WebSocket dari server", inputField(th, &u.edPath, "/vless")).Layout),
-		layout.Rigid(labeledField(gtx, th, "SNI (Server Name)", "Server Name Indication untuk TLS", inputField(th, &u.edSNI, "contoh: support.zoom.us")).Layout),
-		layout.Rigid(labeledField(gtx, th, "Host Header", "Header Host untuk WebSocket", inputField(th, &u.edHost, "sama dengan SNI")).Layout),
+		layout.Rigid(labeledField(gtx, th, "Nama Profil", "", inputField(th, &u.edName, "contoh: Server Utama")).Layout),
+		layout.Rigid(labeledField(gtx, th, "Target Server", "", inputField(th, &u.edAddress, "contoh: ava.game.naver.com")).Layout),
+		layout.Rigid(labeledField(gtx, th, "Port", "", inputField(th, &u.edPort, "443")).Layout),
+		layout.Rigid(labeledField(gtx, th, "Account UUID", "", inputField(th, &u.edUUID, "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx")).Layout),
+		layout.Rigid(labeledField(gtx, th, "WebSocket Path", "", inputField(th, &u.edPath, "/vless")).Layout),
+		layout.Rigid(labeledField(gtx, th, "SNI (Server Name)", "", inputField(th, &u.edSNI, "contoh: support.zoom.us")).Layout),
+		layout.Rigid(labeledField(gtx, th, "Host Header", "", inputField(th, &u.edHost, "sama dengan SNI")).Layout),
 		layout.Rigid(layout.Spacer{Height: unit.Dp(14)}.Layout),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			for u.btnSaveProfile.Clicked(gtx) {
