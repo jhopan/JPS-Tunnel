@@ -110,6 +110,7 @@ type uiState struct {
 	selectButtons []widget.Clickable
 	editButtons   []widget.Clickable
 	deleteButtons []widget.Clickable
+	profileList   widget.List
 
 	cbPingEnabled widget.Bool
 
@@ -189,6 +190,7 @@ func initUI(cfg configData) *uiState {
 		status: "Disconnected",
 		pingMs: "-",
 	}
+	u.profileList.Axis = layout.Vertical
 
 	for _, ed := range []*widget.Editor{
 		&u.edName, &u.edAddress, &u.edPort, &u.edUUID, &u.edPath,
@@ -257,60 +259,152 @@ func (u *uiState) draw(gtx layout.Context) layout.Dimensions {
 }
 
 func (u *uiState) drawMainScreen(gtx layout.Context, th *material.Theme) layout.Dimensions {
-	p := u.getActiveProfile()
-	addressText := "Belum dikonfigurasi"
-	uuidText := "-"
-	profileName := "Default"
-	if p != nil {
-		profileName = p.Name
-		if p.Address != "" {
-			addressText = p.Address + ":" + p.Port
-		}
-		if p.UUID != "" {
-			uuidText = p.UUID
-		}
-	}
-
+	u.ensureButtons()
 	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return u.drawHeader(gtx, th)
 		}),
-		layout.Rigid(layout.Spacer{Height: unit.Dp(20)}.Layout),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(14)}.Layout),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				gtx.Constraints = layout.Exact(image.Pt(gtx.Dp(unit.Dp(80)), gtx.Dp(unit.Dp(80))))
-				return widget.Image{Src: paint.NewImageOp(keyImage), Fit: widget.Contain}.Layout(gtx)
+			return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					l := material.Label(th, unit.Sp(14), "Daftar Profil")
+					l.Font.Weight = font.Bold
+					l.Color = color.NRGBA{R: 240, G: 246, B: 252, A: 255}
+					return l.Layout(gtx)
+				}),
+				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+					return layout.Dimensions{}
+				}),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					for u.btnAddProfile.Clicked(gtx) {
+						u.openEditView("")
+					}
+					b := material.Button(th, &u.btnAddProfile, "+ Tambah")
+					b.Background = color.NRGBA{R: 16, G: 185, B: 129, A: 255}
+					b.Color = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
+					b.CornerRadius = unit.Dp(4)
+					b.TextSize = unit.Sp(12)
+					return b.Layout(gtx)
+				}),
+			)
+		}),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
+		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+			return material.List(th, &u.profileList).Layout(gtx, len(u.data.Profiles), func(gtx layout.Context, i int) layout.Dimensions {
+				p := u.data.Profiles[i]
+				for u.selectButtons[i].Clicked(gtx) {
+					u.data.ActiveID = p.ID
+					saveConfig(u.data)
+					u.status = "Profil aktif: " + p.Name
+				}
+				for u.editButtons[i].Clicked(gtx) {
+					u.openEditView(p.ID)
+				}
+				for u.deleteButtons[i].Clicked(gtx) {
+					u.deleteProfile(p.ID)
+				}
+
+				isActive := p.ID == u.data.ActiveID
+				name := p.Name
+				if isActive {
+					name = "● " + name
+				}
+				endpoint := "Belum dikonfigurasi"
+				if p.Address != "" {
+					endpoint = p.Address + ":" + p.Port
+					if p.Path != "" {
+						endpoint += " • " + p.Path
+					}
+				}
+
+				return layout.Inset{Bottom: unit.Dp(8)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+					cardBg := color.NRGBA{R: 22, G: 27, B: 34, A: 255}
+					borderCol := color.NRGBA{R: 48, G: 54, B: 61, A: 255}
+					if isActive {
+						borderCol = color.NRGBA{R: 16, G: 185, B: 129, A: 255}
+					}
+					return card(gtx, cardBg, borderCol, unit.Dp(6), func(gtx layout.Context) layout.Dimensions {
+						return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+							layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+								return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+									layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+										l := material.Label(th, unit.Sp(14), name)
+										l.Font.Weight = font.Bold
+										if isActive {
+											l.Color = color.NRGBA{R: 16, G: 185, B: 129, A: 255}
+										} else {
+											l.Color = color.NRGBA{R: 240, G: 246, B: 252, A: 255}
+										}
+										return l.Layout(gtx)
+									}),
+									layout.Rigid(layout.Spacer{Height: unit.Dp(2)}.Layout),
+									layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+										l := material.Label(th, unit.Sp(12), endpoint)
+										l.Color = color.NRGBA{R: 139, G: 148, B: 158, A: 255}
+										return l.Layout(gtx)
+									}),
+								)
+							}),
+							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+								btnLabel := "Pilih"
+								if isActive {
+									btnLabel = "Aktif"
+								}
+								b := material.Button(th, &u.selectButtons[i], btnLabel)
+								if isActive {
+									b.Background = color.NRGBA{R: 16, G: 185, B: 129, A: 255}
+									b.Color = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
+								} else {
+									b.Background = color.NRGBA{R: 33, G: 38, B: 45, A: 255}
+									b.Color = color.NRGBA{R: 201, G: 209, B: 217, A: 255}
+								}
+								b.TextSize = unit.Sp(11)
+								b.CornerRadius = unit.Dp(4)
+								return b.Layout(gtx)
+							}),
+							layout.Rigid(layout.Spacer{Width: unit.Dp(6)}.Layout),
+							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+								b := material.Button(th, &u.editButtons[i], "Edit")
+								b.Background = color.NRGBA{R: 33, G: 38, B: 45, A: 255}
+								b.Color = color.NRGBA{R: 201, G: 209, B: 217, A: 255}
+								b.TextSize = unit.Sp(11)
+								b.CornerRadius = unit.Dp(4)
+								return b.Layout(gtx)
+							}),
+							layout.Rigid(layout.Spacer{Width: unit.Dp(6)}.Layout),
+							layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+								b := material.Button(th, &u.deleteButtons[i], "Hapus")
+								b.Background = color.NRGBA{R: 45, G: 25, B: 25, A: 255}
+								b.Color = color.NRGBA{R: 248, G: 113, B: 113, A: 255}
+								b.TextSize = unit.Sp(11)
+								b.CornerRadius = unit.Dp(4)
+								return b.Layout(gtx)
+							}),
+						)
+					})
+				})
 			})
 		}),
-		layout.Rigid(layout.Spacer{Height: unit.Dp(22)}.Layout),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return divider(gtx, color.NRGBA{R: 33, G: 38, B: 45, A: 255})
+		}),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return u.drawActionButtons(gtx, th)
 		}),
-		layout.Rigid(layout.Spacer{Height: unit.Dp(24)}.Layout),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			l := material.Label(th, unit.Sp(15), "Account Info")
-			l.Font.Weight = font.Bold
-			l.Color = color.NRGBA{R: 240, G: 246, B: 252, A: 255}
-			return l.Layout(gtx)
-		}),
-		layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return infoCard(gtx, th, "Profile / Server", profileName+" • "+addressText)
+			return u.drawStatusCard(gtx, th)
 		}),
 		layout.Rigid(layout.Spacer{Height: unit.Dp(8)}.Layout),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return infoCard(gtx, th, "Account UUID", uuidText)
-		}),
-		layout.Rigid(layout.Spacer{Height: unit.Dp(20)}.Layout),
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			l := material.Label(th, unit.Sp(15), "Network Status")
-			l.Font.Weight = font.Bold
-			l.Color = color.NRGBA{R: 240, G: 246, B: 252, A: 255}
-			return l.Layout(gtx)
-		}),
-		layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return u.drawStatusCard(gtx, th)
+			return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				l := material.Label(th, unit.Sp(11), "v"+appVersion+" • By JhopanStore")
+				l.Color = color.NRGBA{R: 110, G: 118, B: 129, A: 255}
+				return l.Layout(gtx)
+			})
 		}),
 	)
 }
@@ -341,10 +435,10 @@ func (u *uiState) drawHeader(gtx layout.Context, th *material.Theme) layout.Dime
 					b.Background = color.NRGBA{R: 22, G: 27, B: 34, A: 255}
 					b.Color = color.NRGBA{R: 201, G: 209, B: 217, A: 255}
 					b.CornerRadius = unit.Dp(6)
-					b.TextSize = unit.Sp(11)
+					b.TextSize = unit.Sp(12)
 					return b.Layout(gtx)
 				}),
-				layout.Rigid(layout.Spacer{Width: unit.Dp(5)}.Layout),
+				layout.Rigid(layout.Spacer{Width: unit.Dp(6)}.Layout),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					for u.btnNavFile.Clicked(gtx) {
 						u.importFromFile()
@@ -353,22 +447,10 @@ func (u *uiState) drawHeader(gtx layout.Context, th *material.Theme) layout.Dime
 					b.Background = color.NRGBA{R: 22, G: 27, B: 34, A: 255}
 					b.Color = color.NRGBA{R: 201, G: 209, B: 217, A: 255}
 					b.CornerRadius = unit.Dp(6)
-					b.TextSize = unit.Sp(11)
+					b.TextSize = unit.Sp(12)
 					return b.Layout(gtx)
 				}),
-				layout.Rigid(layout.Spacer{Width: unit.Dp(5)}.Layout),
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					for u.btnNavProfiles.Clicked(gtx) {
-						u.screen = screenProfiles
-					}
-					b := material.Button(th, &u.btnNavProfiles, "Profil")
-					b.Background = color.NRGBA{R: 22, G: 27, B: 34, A: 255}
-					b.Color = color.NRGBA{R: 201, G: 209, B: 217, A: 255}
-					b.CornerRadius = unit.Dp(6)
-					b.TextSize = unit.Sp(11)
-					return b.Layout(gtx)
-				}),
-				layout.Rigid(layout.Spacer{Width: unit.Dp(5)}.Layout),
+				layout.Rigid(layout.Spacer{Width: unit.Dp(6)}.Layout),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					for u.btnNavSettings.Clicked(gtx) {
 						u.openSettingsView()
@@ -377,7 +459,7 @@ func (u *uiState) drawHeader(gtx layout.Context, th *material.Theme) layout.Dime
 					b.Background = color.NRGBA{R: 22, G: 27, B: 34, A: 255}
 					b.Color = color.NRGBA{R: 201, G: 209, B: 217, A: 255}
 					b.CornerRadius = unit.Dp(6)
-					b.TextSize = unit.Sp(11)
+					b.TextSize = unit.Sp(12)
 					return b.Layout(gtx)
 				}),
 			)
