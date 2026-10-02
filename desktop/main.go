@@ -270,20 +270,6 @@ func (u *uiState) drawMainScreen(gtx layout.Context, th *material.Theme) layout.
 					l.Color = color.NRGBA{R: 240, G: 246, B: 252, A: 255}
 					return l.Layout(gtx)
 				}),
-				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-					return layout.Dimensions{}
-				}),
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					for u.btnAddProfile.Clicked(gtx) {
-						u.openEditView("")
-					}
-					b := material.Button(th, &u.btnAddProfile, "+ Tambah")
-					b.Background = color.NRGBA{R: 16, G: 185, B: 129, A: 255}
-					b.Color = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
-					b.CornerRadius = unit.Dp(4)
-					b.TextSize = unit.Sp(12)
-					return b.Layout(gtx)
-				}),
 			)
 		}),
 		layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
