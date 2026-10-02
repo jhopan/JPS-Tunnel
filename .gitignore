@@ -6,6 +6,7 @@ local.properties
 .libbox-build.*/
 .tmp-*
 *.log
+AGENTS.md
 CLAUDE.md
 ui-realme5.png
 .workbuddy-ai/
