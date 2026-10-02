@@ -36,15 +36,6 @@ jobs:
             cc: ''
             run_test: 'true'
 
-          - name: linux-arm64
-            runner: ubuntu-latest
-            goos: linux
-            goarch: arm64
-            output: JPS-Tunnel-Desktop-linux-arm64
-            ldflags: '-s -w'
-            cc: 'aarch64-linux-gnu-gcc'
-            run_test: 'false'
-
           - name: macos-intel
             runner: macos-13
             goos: darwin
@@ -156,9 +147,8 @@ jobs:
             ### Download
             | Platform | File |
             |---|---|
-            | Windows (x64) | `JPS-Tunnel-Desktop-windows-amd64.exe` |
-            | Linux (x64) | `JPS-Tunnel-Desktop-linux-amd64` |
-            | Linux (ARM64) | `JPS-Tunnel-Desktop-linux-arm64` |
+            | Windows x64 | `JPS-Tunnel-Desktop-windows-amd64.exe` |
+            | Linux x64 | `JPS-Tunnel-Desktop-linux-amd64` |
             | macOS Intel | `JPS-Tunnel-Desktop-macos-intel` |
             | macOS Apple Silicon | `JPS-Tunnel-Desktop-macos-apple` |
 
@@ -169,7 +159,6 @@ jobs:
           files: |
             dist/JPS-Tunnel-Desktop-windows-amd64.exe
             dist/JPS-Tunnel-Desktop-linux-amd64
-            dist/JPS-Tunnel-Desktop-linux-arm64
             dist/JPS-Tunnel-Desktop-macos-intel
             dist/JPS-Tunnel-Desktop-macos-apple
             dist/SHA256SUMS.txt

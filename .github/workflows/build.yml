@@ -49,24 +49,7 @@ jobs:
           sha256sum JPS-Tunnel-"${VER}"-*.apk > SHA256SUMS.txt
           gh release create "$VER" JPS-Tunnel-"${VER}"-*.apk SHA256SUMS.txt \
             --title "JPS Tunnel ${VER}" \
-            --notes "Release-signed APKs: v7, v8, and universal. SHA256SUMS.txt verifies every download." \
-            --latest
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-      - name: Rolling latest (branch push)
-        if: github.ref == 'refs/heads/main'
-        run: |
-          set -euo pipefail
-          ./gradlew assembleRelease --no-daemon
-          OUT="app/build/outputs/apk/release"
-          cp "$OUT/app-arm64-v8a-release.apk" JPS-Tunnel.apk
-          sha256sum JPS-Tunnel.apk > SHA256SUMS.txt
-          gh release delete latest --yes 2>/dev/null || true
-          git push origin :refs/tags/latest 2>/dev/null || true
-          gh release create latest JPS-Tunnel.apk SHA256SUMS.txt \
-            --title "JPS Tunnel (latest v8)" \
-            --notes "Build otomatis dari commit ${{ github.sha }}. APK release-signed arm64-v8a." \
+            --notes "Release-signed APKs: v7, v8, dan universal." \
             --latest
         env:
           GH_TOKEN: ${{ github.token }}
