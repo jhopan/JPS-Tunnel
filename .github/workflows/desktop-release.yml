@@ -37,7 +37,7 @@ jobs:
             run_test: 'true'
 
           - name: macos-intel
-            runner: macos-13
+            runner: macos-latest
             goos: darwin
             goarch: amd64
             output: JPS-Tunnel-Desktop-macos-intel
