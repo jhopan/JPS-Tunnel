@@ -1,0 +1,161 @@
+name: Desktop Release
+
+on:
+  push:
+    tags:
+      - 'desktop-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. desktop-v1.4.1)'
+        required: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-amd64
+            runner: windows-latest
+            goos: windows
+            goarch: amd64
+            output: JPS-Tunnel-Desktop-windows-amd64.exe
+            ldflags: '-s -w -H windowsgui'
+
+          - name: linux-amd64
+            runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            output: JPS-Tunnel-Desktop-linux-amd64
+            ldflags: '-s -w'
+
+          - name: linux-arm64
+            runner: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            output: JPS-Tunnel-Desktop-linux-arm64
+            ldflags: '-s -w'
+
+          - name: macos-amd64
+            runner: macos-13
+            goos: darwin
+            goarch: amd64
+            output: JPS-Tunnel-Desktop-macos-intel
+            ldflags: '-s -w'
+
+          - name: macos-arm64
+            runner: macos-latest
+            goos: darwin
+            goarch: arm64
+            output: JPS-Tunnel-Desktop-macos-apple
+            ldflags: '-s -w'
+
+    defaults:
+      run:
+        working-directory: desktop
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+
+      - name: Install Gio Linux headers
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            libgl1-mesa-dev xorg-dev \
+            libwayland-dev libxkbcommon-dev libxkbcommon-x11-dev \
+            libx11-xcb-dev libegl1-mesa-dev \
+            libxcursor-dev libxfixes-dev libvulkan-dev \
+            gcc-aarch64-linux-gnu
+
+      - name: Test
+        if: matrix.goarch == 'amd64' || runner.os != 'Linux'
+        run: go test ./...
+
+      - name: Build
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 1
+          CC: ${{ matrix.goos == 'linux' && matrix.goarch == 'arm64' && 'aarch64-linux-gnu-gcc' || '' }}
+        run: |
+          go build -ldflags="${{ matrix.ldflags }}" -o "${{ matrix.output }}" .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.name }}
+          path: desktop/${{ matrix.output }}
+          if-no-files-found: error
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          merge-multiple: true
+          path: dist/
+
+      - name: Generate SHA256
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: JPS Tunnel Desktop ${{ steps.tag.outputs.tag }}
+          draft: false
+          prerelease: false
+          body: |
+            ## JPS Tunnel Desktop ${{ steps.tag.outputs.tag }}
+
+            Aplikasi VPN desktop berbasis sing-box (gVisor stack), protokol VLESS WS TLS.
+
+            ### Download
+            | Platform | File |
+            |---|---|
+            | Windows (x64) | `JPS-Tunnel-Desktop-windows-amd64.exe` |
+            | Linux (x64) | `JPS-Tunnel-Desktop-linux-amd64` |
+            | Linux (ARM64) | `JPS-Tunnel-Desktop-linux-arm64` |
+            | macOS Intel | `JPS-Tunnel-Desktop-macos-intel` |
+            | macOS Apple Silicon | `JPS-Tunnel-Desktop-macos-apple` |
+
+            ### Catatan
+            - Windows: jalankan sebagai Administrator (TUN adapter butuh hak admin)
+            - Linux/macOS: `chmod +x` lalu jalankan sebagai root / sudo
+            - Core sing-box terpisah di release `core-v*` — letakkan di folder yang sama dengan binary desktop
+          files: |
+            dist/JPS-Tunnel-Desktop-windows-amd64.exe
+            dist/JPS-Tunnel-Desktop-linux-amd64
+            dist/JPS-Tunnel-Desktop-linux-arm64
+            dist/JPS-Tunnel-Desktop-macos-intel
+            dist/JPS-Tunnel-Desktop-macos-apple
+            dist/SHA256SUMS.txt
