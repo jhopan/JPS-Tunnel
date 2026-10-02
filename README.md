@@ -1,116 +1,162 @@
 <div align="center">
 
-<img src="design/logo.svg" alt="JPS Tunnel" width="128"/>
+<img src="design/logo.svg" alt="JPS Tunnel" width="120"/>
 
 # JPS Tunnel
 
-A lightweight Android VPN client for VLESS over WebSocket + TLS.
+**VPN ringan berbasis sing-box — VLESS WebSocket TLS**
 
-**Light. Stable. 24/7.**
+Stabil 24/7 · Hemat baterai · Multi-platform
 
-[![Release](https://img.shields.io/github/v/release/jhopan/JPS-Tunnel?label=release&color=4CAF50)](https://github.com/jhopan/JPS-Tunnel/releases/latest)
-[![Platform](https://img.shields.io/badge/platform-Android%2024%2B-121212)](#build)
-[![Architecture](https://img.shields.io/badge/arch-arm64--v8a-1976D2)](#build)
+[![Android Release](https://img.shields.io/github/v/release/jhopan/JPS-Tunnel?label=Android&color=10b981&logo=android)](https://github.com/jhopan/JPS-Tunnel/releases/latest)
+[![Desktop Release](https://img.shields.io/github/v/release/jhopan/JPS-Tunnel?label=Desktop&color=3b82f6&logo=windows)](https://github.com/jhopan/JPS-Tunnel/releases)
+[![Platform](https://img.shields.io/badge/Android-24%2B-121212?logo=android)](https://github.com/jhopan/JPS-Tunnel/releases/latest)
+[![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go)](desktop/go.mod)
+[![sing-box](https://img.shields.io/badge/sing--box-v1.11.15-6366f1)](https://github.com/SagerNet/sing-box)
 
-Made with :green_heart: by **[JhopanStore](https://jhopanstore.my.id)** • [Telegram](https://t.me/jhopan_05)
+Dibuat oleh **[JhopanStore](https://jhopanstore.my.id)** &nbsp;·&nbsp; [Telegram](https://t.me/jhopan_05)
 
 </div>
 
-## Overview
+---
 
-JPS Tunnel is a Java-only Android VPN client built on `VpnService` and a local `libbox` (sing-box v1.11.0) runtime. It speaks exactly one protocol — VLESS + WebSocket + TLS with normal SNI — and focuses on three things: staying light, staying honest about connection state, and staying alive around the clock.
+## Tentang
 
-## Features
+JPS Tunnel adalah klien VPN multi-platform (Android + Desktop) yang berjalan di atas [sing-box](https://github.com/SagerNet/sing-box) dengan TUN stack gVisor. Hanya mendukung satu protokol — **VLESS + WebSocket + TLS** — dengan fokus pada kesederhanaan, kestabilan, dan efisiensi.
 
-### Connection
+| | Android | Desktop |
+|---|---|---|
+| **Bahasa** | Java + XML | Go + Gio |
+| **Ukuran** | ~8 MB (download) | ~13 MB |
+| **RAM idle** | ~106 MB | ~56 MB |
+| **Platform** | Android 7+ (arm64/v7) | Windows, Linux, macOS |
 
-- VLESS + WebSocket + TLS with normal SNI; path, SNI, and Host preserved exactly as supplied
-- IPv4-first outbound (`prefer_ipv4`); Cloudflare DNS primary (1.1.1.1), Google backup (8.8.8.8) — consistent across both the sing-box config and the Android TUN
-- Stable routing via `override_android_vpn` — Android `protect(fd)`, no interface guessing, works on both Qualcomm and MediaTek
-- Honest status flow: Connecting → Checking internet → Connected, only after a real HTTP 204 through the tunnel; failures show a safe reason (no network, DNS, TLS, WebSocket)
-
-### Profiles
-
-- Up to 10 profiles in one list; tap a card to make it active — the active one is marked with a green strip and a cyan name
-- Every card carries its own edit (full-screen editor: name, address, UUID, path, SNI, Host) and delete action
-- The main screen stays list-first: the raw config fields are collapsed behind "Edit config ▼", while CONNECT, the traffic meter, and the status box sit outside the scroll area and are always reachable
-- Deleting a profile keeps unsaved field edits, warns before the last remaining config is removed, and hands the active marker to the nearest profile that still has a config
-
-### 24/7 resilience
-
-- Persistent foreground service with `START_STICKY` and saved URI auto-reconnect
-- Screen-on auto-heal probe, network-change probe, adaptive health checks (90 s stable / 30 s recovering / 2 s after events)
-- Auto-reconnect after 3 failed probes, capped at 3 attempts — no battery-hungry loops
-- Keep-alive on task removal: swiping the app away restarts the service while connected
-- Stepwise setup guidance: battery optimization, MIUI Autostart, Recents lock — with direct settings links
-
-### Licensing (offline HWID)
-
-- Export Locked Config: set a config name, customer HWID, and expiry date (dd/mm/yyyy)
-- The `.jvs` payload is AES-256-GCM encrypted with a key derived from the customer's HWID — only that device can open it
-- Wrong HWID or expired license → rejected; lock hides all config fields and shows only the name and expiry
-- Importing the customer's own VLESS URI releases the license automatically; Clear Config wipes everything back to first-run state
-
-### Import / export
-
-- Clipboard and `.jvs` file import/export; `.jvs` files open directly with the app
-- HWID copy for license issuing; About dialog with Telegram and website links
-
-### Efficiency
-
-- Session traffic meter: counts from zero on every connect, resets on disconnect, survives app close, toggleable in the menu
-- No wake locks; adaptive probing; log level `warn`; traffic sampling pauses in background
-- Measured: ~66 MB PSS with the `system` TUN stack (~106 MB with the `gvisor` stack that ships), ~0.5% idle CPU, release APK ~23 MB
-
-> [!NOTE]
-> Scope is intentionally narrow: no QUIC, hotspot sharing, backup servers, rules, failover, or wake locks. `allowInsecure=true` is the default to support compatible Cloudflare Worker bug-domain profiles.
+---
 
 ## Download
 
-Grab the latest APK from GitHub Releases:
+### Android APK
 
-```bash
-https://github.com/jhopan/JPS-Tunnel/releases/latest/download/JhopanStoreVPN.apk
-```
+| File | Untuk siapa |
+|---|---|
+| [JPS-Tunnel-v8.apk](https://github.com/jhopan/JPS-Tunnel/releases/latest) | **Rekomendasi** — HP modern 2017+, arm64-v8a |
+| [JPS-Tunnel-v7.apk](https://github.com/jhopan/JPS-Tunnel/releases/latest) | HP lama, armeabi-v7a 32-bit |
+| [JPS-Tunnel-universal.apk](https://github.com/jhopan/JPS-Tunnel/releases/latest) | Semua HP |
 
-Versioned releases (`v1.0.0` and newer) are permanent; the `latest` tag tracks the current build of `main`.
+### Desktop
+
+| Platform | File |
+|---|---|
+| Windows x64 | `JPS-Tunnel-Desktop-windows-amd64.exe` |
+| Linux x64 | `JPS-Tunnel-Desktop-linux-amd64` |
+| macOS Intel | `JPS-Tunnel-Desktop-macos-intel` |
+| macOS Apple Silicon | `JPS-Tunnel-Desktop-macos-apple` |
+
+→ [Lihat semua release](https://github.com/jhopan/JPS-Tunnel/releases)
+
+> **Catatan Desktop:** Core sing-box terpisah di release `core-v*` — letakkan di folder yang sama dengan binary desktop.
+
+---
+
+## Fitur
+
+### Koneksi
+- VLESS + WebSocket + TLS · SNI, Host, Path dihormati persis dari URI
+- DNS: Cloudflare 1.1.1.1 (primary) + Google 8.8.8.8 (backup), lewat tunnel
+- TUN gVisor — stabil lintas vendor (Qualcomm, MediaTek, Exynos)
+- Status jujur: **Connecting → Checking → Connected**, hanya setelah HTTP 204 nyata lewat tunnel
+
+### Profil
+- Multi-profil — import dari clipboard (`vless://`) atau file `.jps`
+- Kartu profil: tap untuk aktifkan, tombol Edit & Hapus per kartu
+- Profil aktif ditandai border hijau
+
+### Kestabilan 24/7
+- Foreground service `START_STICKY` + auto-reconnect saat jaringan berubah
+- Health check adaptif: 90 detik stabil / 30 detik recovery / 2 detik setelah event
+- Reconnect otomatis maksimal 3x — tidak ada loop boros baterai
+- Tetap berjalan saat app di-swipe dari Recents
+
+### Lisensi Offline (HWID)
+- Export profil terkunci (`.jps`) — terenkripsi AES-256-GCM berbasis HWID perangkat
+- HWID salah atau expired → ditolak otomatis
+- Import URI `vless://` milik sendiri → lisensi dilepas otomatis
+- Tidak ada server, tidak ada revocation remote
+
+### Efisiensi
+- APK v8 hanya **~8 MB** — ABI split + kompresi DEFLATE pada `.so`
+- Log level `warn` — tidak ada file log yang menumpuk
+- Traffic meter per sesi, reset tiap connect
+- Tidak ada wake lock
+
+---
 
 ## Build
 
-Requirements: JDK 17, Android SDK API 35, Go, Android NDK, Git Bash or WSL.
+### Android
 
 ```bash
-# Rebuild the local ARM64 libbox AAR (only when needed)
-bash build_libbox.sh
-
-# Build the app
+# Syarat: JDK 17, Android SDK API 35
+./gradlew assembleRelease     # → app/build/outputs/apk/release/
 ./gradlew assembleDebug
-./gradlew assembleRelease
 ```
 
-APK output: `app/build/outputs/apk/release/app-release.apk`
+### Desktop
 
-> [!IMPORTANT]
-> `build_libbox.sh` pins sing-box `v1.11.0` and produces an ARM64-only `libbox.aar` (gVisor + Clash API retained, QUIC/uTLS removed, symbols stripped). The Java `VpnService` targets this exact tested libbox API — upgrade sing-box only together with a tested libbox migration.
+```bash
+cd desktop
+go fmt ./... && go vet ./... && go test ./...
+go build -ldflags="-s -w -H windowsgui" -o bin/JPS-Tunnel-Desktop.exe .
 
-CI (GitHub Actions) builds the release APK on every push to `main` and publishes it to the rolling `latest` release; pushing a `v*` tag creates a permanent versioned release.
+# Installer Windows (butuh Inno Setup 6)
+"C:/Program Files (x86)/Inno Setup 6/ISCC.exe" setup.iss
+```
 
-## TUN stack note
+### Core (sing-box)
 
-The TUN inbound ships with sing-box's default `gvisor` stack. The lighter `system` stack was measured
-on a MediaTek device (vivo 1802, LTE) and used for a while:
+```bash
+# Build AAR Android lokal
+bash build_libbox.sh
 
-| metric | gvisor | system |
+# Atau trigger CI: push tag core-v*
+git tag core-v1.x.x && git push origin core-v1.x.x
+```
+
+> **Penting:** Build tags core wajib `with_gvisor,with_clash_api` — jangan dihapus.
+
+---
+
+## CI / Release
+
+| Tag | Workflow | Hasil |
 |---|---|---|
-| Total PSS | ~106 MB | ~66 MB |
-| HTTP 204 via tunnel | ~0.4–0.9 s | ~0.4–0.5 s |
-| stress + screen-off recovery | ok | ok |
+| `v*` | `build.yml` | APK Android (v7/v8/universal) |
+| `desktop-v*` | `desktop-release.yml` | Binary desktop 4 platform |
+| `core-v*` | `core.yml` | Core sing-box multi-platform + AAR |
 
-Both stacks passed connect, browse, stress, and 30 s screen-off recovery, but `system` was reverted in
-favour of `gvisor` for cross-device stability (`f9e5458`, `b896e36`) — the memory saving was not worth
-the instability. To re-test it, change `"stack"` in `SingboxConfig.java` and verify on more than one
-chipset before shipping.
+---
 
-## Licensing notes
+## Arsitektur Singkat
 
-The HWID is a SHA-256 hash of a random installation ID (24 hex chars). It survives restarts and updates but resets when the user clears app data or uninstalls — they will then need a new license file. Licensing is fully offline: no server, no remote revocation. To renew, send a new license file, or the customer can import their own VLESS URI, which releases the license.
+```
+vless:// URI
+    ↓ parse (VlessParser.java)
+    ↓ generate config (SingboxConfig.java)
+    ↓ sing-box child process (VpnService.java)
+    ↓ TUN gVisor ← semua traffic sistem
+    ↓ VLESS WS TLS → server
+```
+
+---
+
+## Catatan TUN Stack
+
+gVisor dipilih karena stabil lintas vendor. Stack `system` lebih ringan (~66 MB vs ~106 MB PSS) tapi pernah tidak stabil di beberapa chipset MediaTek. Untuk menguji: ubah `"stack"` di `SingboxConfig.java`, uji minimal di 2 perangkat berbeda sebelum dipakai produksi.
+
+---
+
+<div align="center">
+
+MIT License · © 2026 JhopanStore
+
+</div>
