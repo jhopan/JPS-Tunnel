@@ -127,6 +127,12 @@ func main() {
 	if os.Getenv("GOMEMLIMIT") == "" {
 		debug.SetMemoryLimit(32 << 20)
 	}
+	// One-time privilege setup for Linux/macOS:
+	// sets cap_net_admin (Linux) or setuid (macOS) on core binary so TUN
+	// works without root on subsequent launches. Shows native GUI password
+	// dialog (pkexec/osascript). No-op on Windows.
+	corePath := filepath.Join(filepath.Dir(os.Args[0]), coreName)
+	_ = runOneTimeSetup(corePath)
 	debug.SetGCPercent(50)
 	go run()
 	app.Main()
