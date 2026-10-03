@@ -27,12 +27,14 @@ public final class SingboxConfig {
             .put(new JSONObject().put("tag", "dns-local").put("address", "local")))
             .put("rules", new JSONArray().put(new JSONObject().put("outbound", "direct").put("server", "dns-local"))));
         root.put("inbounds", new JSONArray()
-            .put(new JSONObject().put("type", "tun").put("tag", "tun-in").put("inet4_address", "172.19.0.1/30").put("mtu", 1280).put("auto_route", true).put("strict_route", true).put("sniff", true).put("sniff_override_destination", false).put("stack", STACK))
+            .put(new JSONObject().put("type", "tun").put("tag", "tun-in").put("inet4_address", "172.19.0.1/30").put("mtu", 1280).put("auto_route", true).put("strict_route", false).put("sniff", true).put("sniff_override_destination", false).put("stack", STACK))
             .put(new JSONObject().put("type", "mixed").put("tag", "mixed-in").put("listen", "127.0.0.1").put("listen_port", PROXY_PORT)));
         JSONObject tls = new JSONObject().put("enabled", true)
             .put("server_name", config.sni)
             .put("insecure", config.allowInsecure);
         JSONObject ws = new JSONObject().put("type", "ws").put("path", config.path).put("headers", new JSONObject().put("Host", config.host));
+        // TCP keepalive sudah aktif by default dari sing library (idle ~10 menit).
+        // Field tcp_keep_alive baru ada di sing-box 1.13.0+ — tidak kompatibel v1.11.15.
         root.put("outbounds", new JSONArray()
             .put(new JSONObject().put("type", "vless").put("tag", "proxy").put("server", config.address).put("server_port", config.port).put("uuid", config.uuid).put("domain_strategy", "prefer_ipv4").put("tls", tls).put("transport", ws))
             .put(new JSONObject().put("type", "direct").put("tag", "direct"))

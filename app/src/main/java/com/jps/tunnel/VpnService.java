@@ -484,7 +484,8 @@ public final class VpnService extends android.net.VpnService {
         pingFailures++;
         pushPingLine("HTTP ping gagal (" + pingFailures + ") " + time + " — " + clip(outcome.failure, 60)
             + " (" + elapsed + " ms)");
-        if (pingFailures >= 3) { pushPingLine("Percobaan koneksi ulang otomatis…"); reconnectTunnel(); }
+        // Tidak trigger reconnect dari sini. HTTP ping hanya untuk display status di UI.
+        // Keepalive ditangani TCP keepalive di core (idle 15s). Reconnect otomatis via checkTunnel().
     }
 
     /** HTTP ping status lines, shown in the app status box under "Connected". Rolling window of 5. */

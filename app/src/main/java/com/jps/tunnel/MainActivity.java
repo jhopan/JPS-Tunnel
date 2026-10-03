@@ -116,7 +116,6 @@ public final class MainActivity extends AppCompatActivity {
 
         VpnService.setListener(value -> runOnUiThread(() -> onVpnState(value)));
         requestNotificationPermission();
-        batteryGuard();
         handleSharedFile(getIntent());
     }
 
@@ -125,8 +124,6 @@ public final class MainActivity extends AppCompatActivity {
         boolean batteryDone = pm != null && pm.isIgnoringBatteryOptimizations(getPackageName());
         boolean autostartDone = prefs.getBoolean("autostart_done", false);
         if (batteryDone && autostartDone) return;
-        if (prefs.getBoolean("battery_guard_asked", false) && !batteryDone) return;
-        prefs.edit().putBoolean("battery_guard_asked", true).apply();
         if (!batteryDone) {
             new AlertDialog.Builder(this)
                 .setTitle("Mode 24/7")
@@ -138,7 +135,6 @@ public final class MainActivity extends AppCompatActivity {
                         startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
                     }
                 })
-                .setNeutralButton("Aktifkan Autostart", (d, w) -> openAutostartSetting())
                 .setNegativeButton("Nanti", null)
                 .show();
             return;
@@ -184,6 +180,7 @@ public final class MainActivity extends AppCompatActivity {
         }
         onVpnState(value);
         handler.post(trafficTask);
+        batteryGuard();
     }
 
     private void killedBySystemHint() {
