@@ -66,6 +66,9 @@ public final class MainActivity extends AppCompatActivity {
     private long totalRx, totalTx, lastRx, lastTx, lastSample;
     private boolean hasBaseline;
     private int uid;
+    private boolean batterySettingOpened;
+    private boolean batteryGuardDismissedThisSession;
+    private boolean batteryGuardDialogShowing;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -119,34 +122,72 @@ public final class MainActivity extends AppCompatActivity {
         handleSharedFile(getIntent());
     }
 
-    private void batteryGuard() {
+    private boolean batteryOptimizationDone() {
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-        boolean batteryDone = pm != null && pm.isIgnoringBatteryOptimizations(getPackageName());
+        return (pm != null && pm.isIgnoringBatteryOptimizations(getPackageName()))
+            || prefs.getBoolean("battery_optimization_acknowledged", false);
+    }
+
+    private void batteryGuard() {
+        if (batteryGuardDialogShowing || batteryGuardDismissedThisSession) return;
+        boolean batteryDone = batteryOptimizationDone();
         boolean autostartDone = prefs.getBoolean("autostart_done", false);
         if (batteryDone && autostartDone) return;
-        if (!batteryDone) {
-            new AlertDialog.Builder(this)
-                .setTitle("Mode 24/7")
-                .setMessage("Agar VPN tetap hidup saat layar mati, matikan penghemat daya (battery optimization) dan aktifkan Autostart untuk JPS Tunnel." )
-                .setPositiveButton("Matikan penghemat daya", (d, w) -> {
-                    try {
-                        startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName())));
-                    } catch (Exception error) {
-                        startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
-                    }
-                })
-                .setNegativeButton("Nanti", null)
-                .show();
+        if (!batteryDone && batterySettingOpened) {
+            showBatteryConfirmation();
             return;
         }
-        if (!autostartDone) {
-            new AlertDialog.Builder(this)
-                .setTitle("Aktifkan Autostart")
-                .setMessage("Satu langkah lagi untuk mode 24/7: aktifkan Autostart untuk JPS Tunnel, lalu kunci aplikasi di Recents ( Recent → tahan ikon → gembok ).")
-                .setPositiveButton("Aktifkan Autostart", (d, w) -> { prefs.edit().putBoolean("autostart_done", true).apply(); openAutostartSetting(); })
-                .setNegativeButton("Nanti", null)
-                .show();
+        if (!batteryDone) {
+            showBatteryPrompt();
+            return;
         }
+        showAutostartPrompt();
+    }
+
+    private void showBatteryPrompt() {
+        batteryGuardDialogShowing = true;
+        AlertDialog dialog = new AlertDialog.Builder(this)
+            .setTitle("Mode 24/7")
+            .setMessage("Agar VPN tetap hidup saat layar mati, atur Penghemat daya JPS Tunnel ke Tidak dibatasi.")
+            .setPositiveButton("Buka penghemat daya", (d, w) -> {
+                batterySettingOpened = true;
+                openBatterySetting();
+            })
+            .setNegativeButton("Nanti", (d, w) -> batteryGuardDismissedThisSession = true)
+            .create();
+        dialog.setOnDismissListener(d -> batteryGuardDialogShowing = false);
+        dialog.show();
+    }
+
+    private void showBatteryConfirmation() {
+        batteryGuardDialogShowing = true;
+        AlertDialog dialog = new AlertDialog.Builder(this)
+            .setTitle("Penghemat daya sudah diatur?")
+            .setMessage("Jika JPS Tunnel sudah dipilih Tidak dibatasi, tekan Sudah. Xiaomi/HyperOS kadang tidak melaporkan status ini ke Android.")
+            .setPositiveButton("Sudah", (d, w) -> {
+                prefs.edit().putBoolean("battery_optimization_acknowledged", true).apply();
+                batterySettingOpened = false;
+                handler.post(this::batteryGuard);
+            })
+            .setNegativeButton("Belum", (d, w) -> {
+                batterySettingOpened = false;
+                batteryGuardDismissedThisSession = true;
+            })
+            .create();
+        dialog.setOnDismissListener(d -> batteryGuardDialogShowing = false);
+        dialog.show();
+    }
+
+    private void showAutostartPrompt() {
+        batteryGuardDialogShowing = true;
+        AlertDialog dialog = new AlertDialog.Builder(this)
+            .setTitle("Aktifkan Autostart")
+            .setMessage("Satu langkah lagi untuk mode 24/7: aktifkan Autostart untuk JPS Tunnel, lalu kunci aplikasi di Recents ( Recent → tahan ikon → gembok ).")
+            .setPositiveButton("Aktifkan Autostart", (d, w) -> { prefs.edit().putBoolean("autostart_done", true).apply(); openAutostartSetting(); })
+            .setNegativeButton("Nanti", (d, w) -> batteryGuardDismissedThisSession = true)
+            .create();
+        dialog.setOnDismissListener(d -> batteryGuardDialogShowing = false);
+        dialog.show();
     }
 
     private void openAutostartSetting() {
@@ -184,8 +225,7 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void killedBySystemHint() {
-        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-        boolean batteryDone = pm != null && pm.isIgnoringBatteryOptimizations(getPackageName());
+        boolean batteryDone = batteryOptimizationDone();
         boolean autostartDone = prefs.getBoolean("autostart_done", false);
         if (batteryDone && autostartDone) return;
         if (!batteryDone) {
